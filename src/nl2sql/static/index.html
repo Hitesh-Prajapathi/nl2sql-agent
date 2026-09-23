@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NL2SQL Agent — Natural Language Database Query</title>
+  <meta name="description" content="Query your database using natural language. Powered by DIN-SQL Chain-of-Thought reasoning." />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+
+  <script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/sql.min.js"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:           #07090f;
+      --bg2:          #0c101a;
+      --bg3:          #111827;
+      --glass:        rgba(17, 24, 39, 0.85);
+      --glass-border: rgba(255,255,255,0.08);
+      --glass-border-hover: rgba(99,102,241,0.5);
+      --blue:         #6366f1;
+      --blue-light:   #818cf8;
+      --blue-glow:    rgba(99,102,241,0.35);
+      --cyan:         #22d3ee;
+      --cyan-glow:    rgba(34,211,238,0.2);
+      --green:        #34d399;
+      --green-glow:   rgba(52,211,153,0.2);
+      --orange:       #fb923c;
+      --red:          #f87171;
+      --purple:       #a78bfa;
+      --text:         #f1f5f9;
+      --text2:        #94a3b8;
+      --text3:        #475569;
+      --radius:       14px;
+      --radius-sm:    8px;
+      --t:            all 0.18s cubic-bezier(0.4,0,0.2,1);
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Mesh gradient background ─────────────────────────────────────────── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 60% 50% at 20% 10%, rgba(99,102,241,0.12) 0%, transparent 60%),
+        radial-gradient(ellipse 40% 40% at 80% 80%, rgba(34,211,238,0.08) 0%, transparent 55%),
+        radial-gradient(ellipse 50% 60% at 90% 10%, rgba(167,139,250,0.07) 0%, transparent 50%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    header, main, .input-bar { position: relative; z-index: 1; }
+
+    /* ── Header ─────────────────────────────────────────────────────────── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      height: 58px;
+      background: rgba(7, 9, 15, 0.9);
+      border-bottom: 1px solid var(--glass-border);
+      backdrop-filter: blur(20px);
+      flex-shrink: 0;
+    }
+
+    .logo { display: flex; align-items: center; gap: 12px; }
+
+    .logo-mark {
+      width: 34px; height: 34px;
+      background: linear-gradient(135deg, var(--blue), var(--purple));
+      border-radius: 9px;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 800; font-size: 15px; color: white;
+      box-shadow: 0 0 20px var(--blue-glow);
+      flex-shrink: 0;
+    }
+
+    .logo-name {
+      font-size: 16px; font-weight: 700;
+      color: var(--text);
+      letter-spacing: -0.4px;
+    }
+
+    .logo-pill {
+      font-size: 10px; font-weight: 700;
+      color: var(--blue-light);
+      background: rgba(99,102,241,0.12);
+      border: 1px solid rgba(99,102,241,0.3);
+      padding: 3px 9px; border-radius: 20px;
+      letter-spacing: 0.8px; text-transform: uppercase;
+    }
+
+    .header-right { display: flex; align-items: center; gap: 10px; }
+
+    .conn-indicator {
+      display: flex; align-items: center; gap: 7px;
+      background: rgba(52,211,153,0.08);
+      border: 1px solid rgba(52,211,153,0.2);
+      padding: 5px 12px; border-radius: 20px;
+    }
+
+    .conn-dot {
+      width: 7px; height: 7px;
+      background: var(--green); border-radius: 50%;
+      box-shadow: 0 0 8px var(--green);
+      animation: blink 2.5s infinite;
+    }
+
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+    .conn-text { font-size: 12px; font-weight: 500; color: var(--green); }
+
+    /* ── Layout ──────────────────────────────────────────────────────────── */
+    main { display: flex; flex: 1; overflow: hidden; }
+
+    /* ── Chat ────────────────────────────────────────────────────────────── */
+    .chat-col {
+      display: flex; flex-direction: column;
+      flex: 1; min-width: 0;
+      border-right: 1px solid var(--glass-border);
+    }
+
+    .messages {
+      flex: 1; overflow-y: auto;
+      padding: 28px 32px;
+      display: flex; flex-direction: column; gap: 18px;
+      scroll-behavior: smooth;
+    }
+
+    .messages::-webkit-scrollbar { width: 4px; }
+    .messages::-webkit-scrollbar-track { background: transparent; }
+    .messages::-webkit-scrollbar-thumb { background: rgba(99,102,241,0.3); border-radius: 4px; }
+
+    /* ── Welcome ──────────────────────────────────────────────────────────── */
+    .welcome {
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      flex: 1; text-align: center; gap: 20px;
+      padding: 48px 32px;
+      animation: fadeup 0.5s ease;
+    }
+
+    @keyframes fadeup { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:none} }
+
+    .welcome-orb {
+      width: 80px; height: 80px;
+      background: linear-gradient(135deg, rgba(99,102,241,0.3), rgba(34,211,238,0.2));
+      border: 1px solid rgba(99,102,241,0.3);
+      border-radius: 24px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 34px;
+      box-shadow: 0 0 40px rgba(99,102,241,0.2), inset 0 1px 0 rgba(255,255,255,0.1);
+      position: relative;
+    }
+
+    .welcome-orb::after {
+      content: '';
+      position: absolute; inset: -1px;
+      border-radius: 25px;
+      background: linear-gradient(135deg, rgba(99,102,241,0.4), rgba(34,211,238,0.15));
+      mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      mask-composite: exclude;
+      padding: 1px;
+      opacity: 0.6;
+    }
+
+    .welcome h2 {
+      font-size: 26px; font-weight: 800;
+      letter-spacing: -0.6px;
+      background: linear-gradient(135deg, #f1f5f9, #94a3b8);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .welcome p {
+      font-size: 14.5px; color: var(--text2);
+      max-width: 380px; line-height: 1.65;
+    }
+
+    .chips {
+      display: flex; flex-wrap: wrap; gap: 8px;
+      justify-content: center; margin-top: 8px;
+    }
+
+    .chip {
+      font-size: 12.5px; font-weight: 500;
+      color: var(--blue-light);
+      background: rgba(99,102,241,0.1);
+      border: 1px solid rgba(99,102,241,0.22);
+      padding: 7px 16px; border-radius: 20px;
+      cursor: pointer; transition: var(--t);
+      font-family: 'Inter', sans-serif;
+    }
+
+    .chip:hover {
+      background: rgba(99,102,241,0.22);
+      border-color: rgba(99,102,241,0.5);
+      color: white;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 16px rgba(99,102,241,0.2);
+    }
+
+    /* ── Messages ────────────────────────────────────────────────────────── */
+    .msg { display: flex; flex-direction: column; gap: 5px; animation: msg-in 0.28s cubic-bezier(0.34,1.56,0.64,1); }
+    @keyframes msg-in { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:none} }
+
+    .msg.user { align-items: flex-end; }
+    .msg.agent { align-items: flex-start; }
+
+    .msg-meta {
+      font-size: 11px; font-weight: 600;
+      letter-spacing: 0.5px; text-transform: uppercase;
+      padding: 0 4px;
+    }
+
+    .msg.user .msg-meta { color: var(--blue-light); }
+    .msg.agent .msg-meta { color: var(--text3); }
+
+    .bubble {
+      max-width: 80%;
+      padding: 14px 18px;
+      border-radius: var(--radius);
+      font-size: 14.5px;
+      line-height: 1.7;
+      word-break: break-word;
+    }
+
+    .msg.user .bubble {
+      background: linear-gradient(135deg, rgba(99,102,241,0.28) 0%, rgba(167,139,250,0.18) 100%);
+      border: 1px solid rgba(99,102,241,0.35);
+      border-bottom-right-radius: 4px;
+      color: var(--text);
+      box-shadow: 0 4px 20px rgba(99,102,241,0.15);
+    }
+
+    .msg.agent .bubble {
+      background: var(--glass);
+      border: 1px solid var(--glass-border);
+      border-bottom-left-radius: 4px;
+      color: var(--text);
+      backdrop-filter: blur(12px);
+      box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+    }
+
+    .msg.agent .bubble.refused {
+      border-color: rgba(248,113,113,0.25);
+      background: rgba(248,113,113,0.05);
+    }
+
+    .msg.agent .bubble.clarify {
+      border-color: rgba(251,146,60,0.25);
+      background: rgba(251,146,60,0.05);
+    }
+
+    /* Markdown inside bubbles */
+    .bubble h1,.bubble h2,.bubble h3 { font-weight: 700; margin: 14px 0 6px; }
+    .bubble h1 { font-size: 19px; }
+    .bubble h2 { font-size: 16px; color: var(--blue-light); }
+    .bubble h3 { font-size: 13.5px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; }
+    .bubble p { margin: 6px 0; }
+    .bubble p:first-child { margin-top: 0; }
+    .bubble p:last-child { margin-bottom: 0; }
+    .bubble strong { color: white; font-weight: 700; }
+    .bubble em { color: var(--text2); }
+    .bubble ul,.bubble ol { padding-left: 20px; margin: 8px 0; }
+    .bubble li { margin: 4px 0; color: var(--text2); }
+    .bubble li::marker { color: var(--blue); }
+
+    .bubble blockquote {
+      border-left: 3px solid var(--blue);
+      padding: 8px 14px;
+      margin: 12px 0;
+      background: rgba(99,102,241,0.07);
+      border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+      color: var(--text2);
+      font-size: 13.5px;
+    }
+    .bubble blockquote strong { color: var(--blue-light); }
+
+    .bubble table {
+      width: 100%; border-collapse: collapse;
+      margin: 14px 0; font-size: 13px;
+      border-radius: var(--radius-sm); overflow: hidden;
+      border: 1px solid rgba(99,102,241,0.15);
+    }
+    .bubble th {
+      background: rgba(99,102,241,0.15);
+      color: var(--blue-light); font-weight: 600;
+      padding: 9px 14px; text-align: left;
+      border-bottom: 1px solid rgba(99,102,241,0.2);
+      white-space: nowrap; font-size: 12px;
+      text-transform: uppercase; letter-spacing: 0.4px;
+    }
+    .bubble td {
+      padding: 8px 14px;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      color: var(--text);
+    }
+    .bubble tr:last-child td { border-bottom: none; }
+    .bubble tr:nth-child(even) td { background: rgba(255,255,255,0.02); }
+    .bubble tr:hover td { background: rgba(99,102,241,0.06); transition: var(--t); }
+
+    /* Typing */
+    .typing {
+      display: flex; align-items: center; gap: 5px;
+      padding: 14px 18px;
+      background: var(--glass);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius); border-bottom-left-radius: 4px;
+      width: fit-content;
+      backdrop-filter: blur(12px);
+    }
+    .tdot {
+      width: 7px; height: 7px;
+      background: var(--blue); border-radius: 50%;
+      animation: tdot 1.2s infinite;
+    }
+    .tdot:nth-child(2){animation-delay:.2s}
+    .tdot:nth-child(3){animation-delay:.4s}
+    @keyframes tdot { 0%,80%,100%{transform:scale(0.6);opacity:0.4} 40%{transform:scale(1.1);opacity:1} }
+
+    /* ── Input Bar ───────────────────────────────────────────────────────── */
+    .input-bar {
+      padding: 16px 24px 20px;
+      background: rgba(7,9,15,0.92);
+      border-top: 1px solid var(--glass-border);
+      backdrop-filter: blur(20px);
+    }
+
+    .input-row {
+      display: flex; align-items: flex-end; gap: 10px;
+      background: var(--bg3);
+      border: 1.5px solid rgba(99,102,241,0.2);
+      border-radius: var(--radius);
+      padding: 10px 10px 10px 18px;
+      transition: var(--t);
+      box-shadow: 0 0 0 0 transparent;
+    }
+
+    .input-row:focus-within {
+      border-color: var(--blue);
+      box-shadow: 0 0 0 3px var(--blue-glow), 0 8px 32px rgba(0,0,0,0.4);
+    }
+
+    #q {
+      flex: 1; background: none; border: none; outline: none;
+      color: var(--text); font-family: 'Inter', sans-serif;
+      font-size: 14.5px; line-height: 1.5;
+      resize: none; max-height: 120px; min-height: 22px;
+    }
+    #q::placeholder { color: var(--text3); }
+
+    #send {
+      width: 40px; height: 40px; border-radius: 10px;
+      border: none; cursor: pointer; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      background: linear-gradient(135deg, var(--blue), var(--purple));
+      color: white; font-size: 18px; font-weight: 300;
+      transition: var(--t);
+      box-shadow: 0 4px 16px var(--blue-glow);
+    }
+    #send:hover:not(:disabled) {
+      transform: scale(1.08);
+      box-shadow: 0 6px 24px var(--blue-glow);
+    }
+    #send:disabled { opacity: 0.35; cursor: not-allowed; transform: none; box-shadow: none; }
+
+    .input-hint {
+      font-size: 11px; color: var(--text3);
+      margin-top: 8px; padding: 0 2px;
+    }
+
+    /* ── Inspector ───────────────────────────────────────────────────────── */
+    .inspector {
+      width: 370px; flex-shrink: 0;
+      display: flex; flex-direction: column;
+      overflow-y: auto;
+      padding: 18px 16px; gap: 12px;
+      background: var(--bg2);
+    }
+    .inspector::-webkit-scrollbar { width: 3px; }
+    .inspector::-webkit-scrollbar-thumb { background: rgba(99,102,241,0.3); border-radius: 3px; }
+
+    .insp-empty {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 12px;
+      text-align: center; padding: 24px;
+    }
+
+    .insp-empty-icon {
+      width: 52px; height: 52px;
+      background: rgba(99,102,241,0.08);
+      border: 1px solid rgba(99,102,241,0.15);
+      border-radius: 14px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px;
+      color: var(--text3);
+    }
+
+    .insp-empty p {
+      font-size: 13px; color: var(--text3);
+      line-height: 1.6; max-width: 200px;
+    }
+
+    /* Cards */
+    .card {
+      background: var(--glass);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      backdrop-filter: blur(8px);
+      animation: fadeup 0.25s ease;
+      transition: var(--t);
+    }
+    .card:hover { border-color: rgba(99,102,241,0.25); }
+
+    .card-head {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--glass-border);
+      background: rgba(99,102,241,0.04);
+    }
+
+    .card-title {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 11px; font-weight: 700;
+      color: var(--text2); letter-spacing: 0.7px;
+      text-transform: uppercase;
+    }
+
+    .card-icon {
+      width: 18px; height: 18px;
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    .card-body { padding: 14px; }
+
+    /* Status badge */
+    .badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 5px 12px; border-radius: 20px;
+      font-size: 12px; font-weight: 700; letter-spacing: 0.2px;
+    }
+    .badge.answered { background: rgba(52,211,153,0.12); color: var(--green); border: 1px solid rgba(52,211,153,0.25); }
+    .badge.needs_clarification { background: rgba(251,146,60,0.12); color: var(--orange); border: 1px solid rgba(251,146,60,0.25); }
+    .badge.refused,.badge.failed { background: rgba(248,113,113,0.12); color: var(--red); border: 1px solid rgba(248,113,113,0.25); }
+
+    /* SQL block */
+    .sql-wrap {
+      position: relative;
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+    .sql-wrap pre { margin: 0; padding: 14px; font-family: 'JetBrains Mono', monospace; font-size: 12.5px; line-height: 1.65; overflow-x: auto; }
+    .copy-btn {
+      position: absolute; top: 8px; right: 8px;
+      padding: 4px 10px; font-size: 11px; font-weight: 600;
+      background: rgba(99,102,241,0.2); color: var(--blue-light);
+      border: 1px solid rgba(99,102,241,0.3);
+      border-radius: 6px; cursor: pointer; transition: var(--t);
+      font-family: 'Inter', sans-serif;
+    }
+    .copy-btn:hover { background: rgba(99,102,241,0.35); }
+    .copy-btn.ok { color: var(--green); border-color: rgba(52,211,153,0.3); }
+
+    /* Timing bars */
+    .t-row { margin-bottom: 11px; }
+    .t-row:last-child { margin-bottom: 0; }
+    .t-info { display: flex; justify-content: space-between; margin-bottom: 5px; }
+    .t-name { font-size: 12px; color: var(--text2); }
+    .t-val { font-size: 12px; font-family: 'JetBrains Mono', monospace; color: var(--cyan); font-weight: 600; }
+    .t-track { height: 5px; background: rgba(255,255,255,0.06); border-radius: 3px; overflow: hidden; }
+    .t-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--blue), var(--cyan)); transition: width 0.7s cubic-bezier(0.4,0,0.2,1); }
+    .t-total {
+      display: flex; justify-content: space-between;
+      padding-top: 10px; margin-top: 10px;
+      border-top: 1px solid var(--glass-border);
+    }
+    .t-total-label { font-size: 12px; color: var(--text2); font-weight: 600; }
+    .t-total-val { font-size: 13px; font-family: 'JetBrains Mono', monospace; color: var(--green); font-weight: 700; }
+
+    /* Assumption items */
+    .asm {
+      display: flex; gap: 10px; padding: 8px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      font-size: 13px; color: var(--text2); line-height: 1.55;
+    }
+    .asm:last-child { border-bottom: none; padding-bottom: 0; }
+    .asm-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--blue); flex-shrink: 0; margin-top: 6px;
+      box-shadow: 0 0 6px var(--blue-glow);
+    }
+
+    /* Mobile */
+    @media (max-width: 768px) {
+      .inspector { display: none; position: fixed; inset: 58px 0 0; z-index: 50; width: 100%; padding: 16px; }
+      .inspector.open { display: flex; }
+      .chat-col { border-right: none; }
+      .bubble { max-width: 94%; }
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="logo">
+      <div class="logo-mark">N</div>
+      <span class="logo-name">NL2SQL Agent</span>
+      <span class="logo-pill">DIN-SQL</span>
+    </div>
+    <div class="header-right">
+      <div class="conn-indicator">
+        <div class="conn-dot"></div>
+        <span class="conn-text">Connected</span>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- Chat -->
+    <div class="chat-col">
+      <div class="messages" id="messages">
+        <div class="welcome" id="welcome">
+          <div class="welcome-orb">&#128301;</div>
+          <h2>Ask anything about your database</h2>
+          <p>Powered by DIN-SQL Chain-of-Thought reasoning. Ask complex questions in plain English — get SQL, answers, and full transparency.</p>
+          <div class="chips">
+            <button class="chip" onclick="fill(this)">How many customers?</button>
+            <button class="chip" onclick="fill(this)">What is the total revenue?</button>
+            <button class="chip" onclick="fill(this)">Top 5 customers by order value</button>
+            <button class="chip" onclick="fill(this)">Which orders are still pending?</button>
+            <button class="chip" onclick="fill(this)">Show all refunded payments</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="input-bar">
+        <div class="input-row">
+          <textarea id="q" rows="1" placeholder="Ask a question about the database..."></textarea>
+          <button id="send" onclick="ask()" title="Send">&#8593;</button>
+        </div>
+        <p class="input-hint">Enter to send &nbsp;&bull;&nbsp; Shift+Enter for new line</p>
+      </div>
+    </div>
+
+    <!-- Inspector -->
+    <aside class="inspector" id="inspector">
+      <div class="insp-empty" id="insp-empty">
+        <div class="insp-empty-icon">&#128202;</div>
+        <p>Run a query to see the SQL, latency breakdown, and reasoning here.</p>
+      </div>
+      <div id="insp-content" style="display:none;flex-direction:column;gap:12px;"></div>
+    </aside>
+  </main>
+
+<script>
+  const API = window.location.origin;
+  const uuid = () => crypto.randomUUID?.() ??
+    'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+      const r = Math.random() * 16 | 0;
+      return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+    });
+  let tid = uuid();
+  let loading = false;
+  let history = [];
+
+  marked.setOptions({ breaks: true, gfm: true });
+
+  const msgEl   = document.getElementById('messages');
+  const welcome = document.getElementById('welcome');
+  const qEl     = document.getElementById('q');
+  const sendEl  = document.getElementById('send');
+  const inspEmpty   = document.getElementById('insp-empty');
+  const inspContent = document.getElementById('insp-content');
+
+  qEl.addEventListener('input', () => {
+    qEl.style.height = 'auto';
+    qEl.style.height = Math.min(qEl.scrollHeight, 120) + 'px';
+  });
+
+  qEl.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ask(); }
+  });
+
+  function fill(btn) {
+    qEl.value = btn.textContent.trim();
+    qEl.dispatchEvent(new Event('input'));
+    qEl.focus();
+    ask();
+  }
+
+  async function ask() {
+    const q = qEl.value.trim();
+    if (!q || loading) return;
+
+    welcome.style.display = 'none';
+    loading = true;
+    qEl.value = '';
+    qEl.style.height = 'auto';
+    sendEl.disabled = true;
+
+    addMsg('user', q);
+    const typing = addTyping();
+
+    try {
+      const res = await fetch(`${API}/query`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: q, thread_id: tid })
+      });
+      const data = await res.json();
+      typing.remove();
+
+      if (!res.ok) {
+        addMsg('agent', `**Error ${res.status}:** ${data.detail || 'Unexpected error.'}`, 'failed');
+      } else {
+        const idx = history.length;
+        history.push({ q, data });
+        addMsg('agent', data.answer || '*No answer returned.*', data.status, idx);
+        updateInspector(data);
+      }
+    } catch(e) {
+      typing.remove();
+      addMsg('agent', '**Connection error.** Could not reach the server.', 'failed');
+    }
+
+    loading = false;
+    sendEl.disabled = false;
+    qEl.focus();
+  }
+
+  function addMsg(role, text, status, idx) {
+    const wrap = document.createElement('div');
+    wrap.className = `msg ${role}`;
+
+    const meta = document.createElement('div');
+    meta.className = 'msg-meta';
+    meta.textContent = role === 'user' ? 'You' : 'Agent';
+
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    if (status === 'refused' || status === 'failed') bubble.classList.add('refused');
+    else if (status === 'needs_clarification') bubble.classList.add('clarify');
+
+    if (role === 'agent') {
+      bubble.innerHTML = marked.parse(text || '');
+      bubble.querySelectorAll('pre code').forEach(b => hljs.highlightElement(b));
+      if (idx !== undefined) {
+        bubble.style.cursor = 'pointer';
+        bubble.title = 'Click to view details';
+        bubble.addEventListener('click', () => updateInspector(history[idx].data));
+      }
+    } else {
+      bubble.textContent = text;
+    }
+
+    wrap.appendChild(meta);
+    wrap.appendChild(bubble);
+    msgEl.appendChild(wrap);
+    msgEl.scrollTop = msgEl.scrollHeight;
+    return wrap;
+  }
+
+  function addTyping() {
+    const wrap = document.createElement('div');
+    wrap.className = 'msg agent';
+    const meta = document.createElement('div');
+    meta.className = 'msg-meta'; meta.textContent = 'Agent';
+    const t = document.createElement('div');
+    t.className = 'typing';
+    for (let i=0;i<3;i++) { const d=document.createElement('div'); d.className='tdot'; t.appendChild(d); }
+    wrap.appendChild(meta); wrap.appendChild(t);
+    msgEl.appendChild(wrap);
+    msgEl.scrollTop = msgEl.scrollHeight;
+    return wrap;
+  }
+
+  function updateInspector(data) {
+    inspEmpty.style.display = 'none';
+    inspContent.style.display = 'flex';
+    inspContent.innerHTML = '';
+
+    // Status
+    inspContent.appendChild(card(
+      statusIcon(data.status), 'Status',
+      `<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+        <span class="badge ${data.status}">${badgeDot(data.status)} ${statusLabel(data.status)}</span>
+        ${data.attempts > 0 ? `<span style="font-size:11px;color:var(--text3);">${data.attempts} retry</span>` : ''}
+       </div>`
+    ));
+
+    // SQL
+    if (data.sql) {
+      const c = card(sqlIcon(), 'Generated SQL', `
+        <div class="sql-wrap">
+          <pre><code class="language-sql">${esc(data.sql)}</code></pre>
+          <button class="copy-btn" id="cpbtn">Copy</button>
+        </div>
+      `);
+      c.querySelectorAll('pre code').forEach(b => hljs.highlightElement(b));
+      c.querySelector('#cpbtn').addEventListener('click', function() {
+        navigator.clipboard.writeText(data.sql).then(() => {
+          this.textContent = 'Copied!'; this.classList.add('ok');
+          setTimeout(() => { this.textContent = 'Copy'; this.classList.remove('ok'); }, 2000);
+        });
+      });
+      inspContent.appendChild(c);
+    }
+
+    // Timings
+    if (data.timings && Object.keys(data.timings).length) {
+      const total = Object.values(data.timings).reduce((a,b)=>a+b,0);
+      const rows = Object.entries(data.timings).map(([k,v]) => {
+        const pct = total > 0 ? Math.round(v/total*100) : 0;
+        const name = k.replace(/_ms$/,'').replace(/_/g,' ');
+        return `<div class="t-row">
+          <div class="t-info"><span class="t-name">${name}</span><span class="t-val">${Math.round(v)}ms</span></div>
+          <div class="t-track"><div class="t-fill" style="width:${pct}%"></div></div>
+        </div>`;
+      }).join('');
+      inspContent.appendChild(card(clockIcon(), 'Latency', rows + `
+        <div class="t-total">
+          <span class="t-total-label">Total</span>
+          <span class="t-total-val">${Math.round(total)}ms</span>
+        </div>`
+      ));
+    }
+
+    // Assumptions
+    if (data.assumptions && data.assumptions.length) {
+      const items = data.assumptions.map(a =>
+        `<div class="asm"><div class="asm-dot"></div><span>${esc(a)}</span></div>`
+      ).join('');
+      inspContent.appendChild(card(listIcon(), 'Assumptions', items));
+    }
+  }
+
+  function card(iconSvg, title, body) {
+    const el = document.createElement('div');
+    el.className = 'card';
+    el.innerHTML = `
+      <div class="card-head">
+        <div class="card-title"><div class="card-icon">${iconSvg}</div>${title}</div>
+      </div>
+      <div class="card-body">${body}</div>`;
+    return el;
+  }
+
+  function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function statusLabel(s) {
+    return {answered:'Answered',needs_clarification:'Clarification Needed',refused:'Refused',failed:'Failed'}[s]||s;
+  }
+
+  function badgeDot(s) {
+    const c = {answered:'#34d399',needs_clarification:'#fb923c',refused:'#f87171',failed:'#f87171'}[s]||'#94a3b8';
+    return `<span style="width:7px;height:7px;border-radius:50%;background:${c};display:inline-block;box-shadow:0 0 6px ${c}"></span>`;
+  }
+
+  function statusIcon(s) {
+    return `<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.5"/><circle cx="7" cy="7" r="2.5" fill="currentColor"/></svg>`;
+  }
+
+  function sqlIcon() {
+    return `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.5" y="2.5" width="11" height="9" rx="1.5"/><path d="M4 5.5l2 2-2 2M8 9.5h2.5"/></svg>`;
+  }
+
+  function clockIcon() {
+    return `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="5.5"/><path d="M7 4.5V7l1.5 1.5"/></svg>`;
+  }
+
+  function listIcon() {
+    return `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3.5h10M2 7h7M2 10.5h5"/></svg>`;
+  }
+</script>
+</body>
+</html>

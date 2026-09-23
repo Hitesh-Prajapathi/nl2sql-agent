@@ -1,0 +1,40 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: nl2sql_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: nl2sql_assignment
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
+      - ./db/seed_data.sql:/docker-entrypoint-initdb.d/02_seed.sql
+      - ./db/setup_role.sql:/docker-entrypoint-initdb.d/03_role.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d nl2sql_assignment"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    container_name: nl2sql_app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://nl2sql_reader:reader_pass@postgres:5432/nl2sql_assignment
+      DATABASE_ADMIN_URL: postgresql://postgres:postgres@postgres:5432/nl2sql_assignment
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./src:/app/src
+    command: uvicorn nl2sql.api.app:app --host 0.0.0.0 --port 8000 --reload
+
+volumes:
+  postgres_data:
