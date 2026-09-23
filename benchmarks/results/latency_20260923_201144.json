@@ -1,0 +1,169 @@
+{
+  "timestamp": "20260923_201144",
+  "base_url": "http://0.0.0.0:8000",
+  "runs_per_question": 3,
+  "overall_p50_ms": 36271.9,
+  "overall_p95_ms": 37119.3,
+  "questions": [
+    {
+      "id": "LAT-01",
+      "question": "How many customers are there in each tier?",
+      "runs": [
+        1.4348682499839924,
+        14.17461154202465,
+        36.07266966695897
+      ],
+      "statuses": [
+        "answered",
+        "answered",
+        "answered"
+      ],
+      "p50_ms": 14174.6,
+      "p95_ms": 36072.7
+    },
+    {
+      "id": "LAT-02",
+      "question": "What is the distribution of orders by status?",
+      "runs": [
+        36.92961783398641,
+        35.93547641596524,
+        36.99540237500332
+      ],
+      "statuses": [
+        "answered",
+        "answered",
+        "answered"
+      ],
+      "p50_ms": 36929.6,
+      "p95_ms": 36995.4
+    },
+    {
+      "id": "LAT-03",
+      "question": "What are the 5 most expensive products by unit price?",
+      "runs": [
+        35.858915958961006,
+        36.969705374969635,
+        35.84600074996706
+      ],
+      "statuses": [
+        "answered",
+        "answered",
+        "answered"
+      ],
+      "p50_ms": 35858.9,
+      "p95_ms": 36969.7
+    },
+    {
+      "id": "LAT-04",
+      "question": "What is the total completed payment amount broken down by payment method?",
+      "runs": [
+        37.07779987499816,
+        36.03983695805073,
+        36.1604544580332
+      ],
+      "statuses": [
+        "answered",
+        "answered",
+        "answered"
+      ],
+      "p50_ms": 36160.5,
+      "p95_ms": 37077.8
+    },
+    {
+      "id": "LAT-05",
+      "question": "Which customers have placed more than 3 orders?",
+      "runs": [
+        37.119281792023685,
+        36.09150237496942,
+        36.27920612500748
+      ],
+      "statuses": [
+        "answered",
+        "answered",
+        "answered"
+      ],
+      "p50_ms": 36279.2,
+      "p95_ms": 37119.3
+    },
+    {
+      "id": "LAT-06",
+      "question": "What are the top 3 product categories by total units sold on delivered orders?",
+      "runs": [
+        37.28493804199388,
+        36.47342912503518,
+        36.452140041976236
+      ],
+      "statuses": [
+        "answered",
+        "answered",
+        "answered"
+      ],
+      "p50_ms": 36473.4,
+      "p95_ms": 37284.9
+    },
+    {
+      "id": "LAT-07",
+      "question": "For each returned order, what is the refund amount and the percentage of the order total that was refunded?",
+      "runs": [
+        36.5706704579643,
+        36.4054809579975,
+        36.38808770896867
+      ],
+      "statuses": [
+        "answered",
+        "answered",
+        "answered"
+      ],
+      "p50_ms": 36405.5,
+      "p95_ms": 36570.7
+    },
+    {
+      "id": "LAT-08",
+      "question": "Which orders were paid less than the order total amount, and by how much?",
+      "runs": [
+        36.38320654199924,
+        36.36193350004032,
+        36.45100470801117
+      ],
+      "statuses": [
+        "answered",
+        "answered",
+        "answered"
+      ],
+      "p50_ms": 36383.2,
+      "p95_ms": 36451.0
+    },
+    {
+      "id": "LAT-09",
+      "question": "How many open or escalated support tickets are there per support agent?",
+      "runs": [
+        36.264592791034374,
+        36.25150241702795,
+        0.16304375004256144
+      ],
+      "statuses": [
+        "answered",
+        "answered",
+        "refused"
+      ],
+      "p50_ms": 36251.5,
+      "p95_ms": 36264.6
+    },
+    {
+      "id": "LAT-10",
+      "question": "Which customers have raised a support ticket but have never placed an order?",
+      "runs": [
+        0.11648662498919293,
+        0.16213404096197337,
+        0.1393720000050962
+      ],
+      "statuses": [
+        "refused",
+        "refused",
+        "refused"
+      ],
+      "p50_ms": 139.4,
+      "p95_ms": 162.1
+    }
+  ]
+}
