@@ -2,16 +2,20 @@ from __future__ import annotations
 
 import asyncio
 import socket
+from collections.abc import AsyncIterator, Iterator
+from typing import Any
 from urllib.parse import urlparse
 
+import asyncpg
 import pytest
 
-from nl2sql.agent import graph as graph_mod
-from nl2sql.agent.nodes import execute as execute_mod
+import nl2sql.agent.graph as graph_mod
+import nl2sql.agent.nodes.execute as execute_mod
 from nl2sql.config import get_settings
 from nl2sql.db import connection
 from nl2sql.llm import providers as providers_mod
 from nl2sql.llm.providers import FakeLLMScript, reset_fake_script
+from tests.fakes import SetSettings
 
 # ── Postgres availability (integration tests) ────────────────────────────────
 
@@ -40,7 +44,7 @@ def _postgres_reachable() -> bool:
     return _pg_ok
 
 
-def pytest_collection_modifyitems(config, items):
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
     integ = [i for i in items if "integration" in i.keywords]
     if not integ or _postgres_reachable():
         return
@@ -51,18 +55,21 @@ def pytest_collection_modifyitems(config, items):
 
 # ── Settings / fake LLM fixtures ─────────────────────────────────────────────
 
+
 @pytest.fixture
-def set_settings(monkeypatch):
+def set_settings(monkeypatch: pytest.MonkeyPatch) -> SetSettings:
     """set_settings(max_retry_attempts=1, ...) patches every module-level `settings`."""
-    def _set(**kw):
+
+    def _set(**kw: Any) -> None:
         for mod in (graph_mod, execute_mod, providers_mod):
             for k, v in kw.items():
                 monkeypatch.setattr(mod.settings, k, v)
+
     return _set
 
 
 @pytest.fixture
-def fake_llm(set_settings) -> FakeLLMScript:
+def fake_llm(set_settings: SetSettings) -> Iterator[FakeLLMScript]:
     """Select the fake provider (no network) and return its fresh script."""
     set_settings(llm_provider="fake", fake_llm_latency_ms=0.0, max_retry_attempts=3)
     script = reset_fake_script()
@@ -72,8 +79,9 @@ def fake_llm(set_settings) -> FakeLLMScript:
 
 # ── Real pool (integration) ──────────────────────────────────────────────────
 
+
 @pytest.fixture
-async def pg_pool():
+async def pg_pool() -> AsyncIterator[asyncpg.Pool]:
     """Real read-only pool; closed at teardown (the pool is a module global bound
     to the event loop, so it must not leak into the next test's loop)."""
     pool = await connection.get_pool()
@@ -84,7 +92,7 @@ async def pg_pool():
 
 
 @pytest.fixture(autouse=True)
-def _drop_stale_pool():
+def _drop_stale_pool() -> Iterator[None]:
     yield
     # Safety net: never let a pool from a finished event loop leak across tests.
     connection._pool = None

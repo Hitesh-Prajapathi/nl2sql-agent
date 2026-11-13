@@ -24,6 +24,7 @@ requires_pg = pytest.mark.skipif(not _pg_up(), reason="Postgres unreachable")
 
 # ── Unit ──────────────────────────────────────────────────────────────────────
 
+
 def test_header_plain_and_with_domain() -> None:
     p = DatabaseProfile(db_id="x", display_name="Acme DB")
     assert p.header().startswith("=== DATABASE SCHEMA (Acme DB) ===")
@@ -64,6 +65,7 @@ def test_prompt_has_no_real_data() -> None:
 
 
 # ── Integration ───────────────────────────────────────────────────────────────
+
 
 @pytest.mark.integration
 @requires_pg

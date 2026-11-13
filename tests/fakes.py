@@ -1,11 +1,18 @@
 """Test doubles: plan builders, a stub schema provider and a scripted executor."""
+
 from __future__ import annotations
+
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from nl2sql.models import ExecutionResult, PlanResult
 from nl2sql.schema.provider import SchemaProvider
 
+SetSettings = Callable[..., None]
+Runner = Callable[..., Awaitable[dict[str, Any]]]
 
-def sql_plan(sql: str, **kw) -> PlanResult:
+
+def sql_plan(sql: str, **kw: Any) -> PlanResult:
     return PlanResult(
         relevant_tables=kw.pop("relevant_tables", ["customers.customer_id"]),
         ambiguity_analysis=kw.pop("ambiguity_analysis", "None"),
@@ -33,7 +40,7 @@ class StubSchemaProvider(SchemaProvider):
         return self.context
 
 
-def ok_result(rows: list[dict] | None = None) -> ExecutionResult:
+def ok_result(rows: list[dict[str, Any]] | None = None) -> ExecutionResult:
     rows = rows if rows is not None else [{"total": 42}]
     cols = list(rows[0].keys()) if rows else []
     return ExecutionResult(success=True, columns=cols, rows=rows, row_count=len(rows))
@@ -50,7 +57,7 @@ class FakeExecutor:
         self.results = list(results)
         self.sqls: list[str] = []
 
-    async def __call__(self, pool, sql: str) -> ExecutionResult:
+    async def __call__(self, pool: Any, sql: str) -> ExecutionResult:
         self.sqls.append(sql)
         if len(self.results) > 1:
             return self.results.pop(0)

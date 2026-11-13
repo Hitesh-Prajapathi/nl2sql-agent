@@ -11,7 +11,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.runnables import Runnable, RunnableLambda
-from pydantic import BaseModel
+from pydantic import BaseModel, SecretStr
 
 from nl2sql.config import get_settings
 from nl2sql.models import PlanResult
@@ -92,7 +92,7 @@ class FakeLLMScript:
     """Scriptable, inspectable response source shared by all fake LLMs."""
 
     latency_ms: float | None = None  # None -> settings.fake_llm_latency_ms
-    strict: bool = False             # raise instead of repeating / canned fallback
+    strict: bool = False  # raise instead of repeating / canned fallback
     calls: list[FakeCall] = field(default_factory=list)
     _queues: dict[str, deque[Any]] = field(default_factory=dict)
     _last: dict[str, Any] = field(default_factory=dict)
@@ -199,8 +199,11 @@ class FakeChatModel(BaseChatModel):
         return self.script if self.script is not None else _fake_script
 
     def _generate(
-        self, messages: list[BaseMessage], stop: list[str] | None = None,
-        run_manager: Any = None, **kwargs: Any,
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: Any = None,
+        **kwargs: Any,
     ) -> ChatResult:
         script = self._script()
         text = script.respond_text(self.channel, messages)
@@ -210,8 +213,11 @@ class FakeChatModel(BaseChatModel):
         return ChatResult(generations=[ChatGeneration(message=AIMessage(content=text))])
 
     async def _agenerate(
-        self, messages: list[BaseMessage], stop: list[str] | None = None,
-        run_manager: Any = None, **kwargs: Any,
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: Any = None,
+        **kwargs: Any,
     ) -> ChatResult:
         script = self._script()
         text = script.respond_text(self.channel, messages)
@@ -220,8 +226,13 @@ class FakeChatModel(BaseChatModel):
             await asyncio.sleep(lat)
         return ChatResult(generations=[ChatGeneration(message=AIMessage(content=text))])
 
-    def with_structured_output(  # type: ignore[override]
-        self, schema: Any, *, method: str = "json_mode", include_raw: bool = False, **kwargs: Any,
+    def with_structured_output(
+        self,
+        schema: Any,
+        *,
+        method: str = "json_mode",
+        include_raw: bool = False,
+        **kwargs: Any,
     ) -> Runnable[Any, Any]:
         script = self._script()
 
@@ -246,6 +257,7 @@ class FakeChatModel(BaseChatModel):
 # Factory
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 def get_planner_llm() -> BaseChatModel:
     """70B — planning, SQL generation, error correction."""
     if settings.llm_provider == "fake":
@@ -256,7 +268,7 @@ def get_planner_llm() -> BaseChatModel:
         model=settings.planner_model,
         temperature=0,
         max_tokens=2048,
-        api_key=settings.groq_api_key,
+        api_key=SecretStr(settings.groq_api_key),
     )
 
 
@@ -270,5 +282,5 @@ def get_fast_llm() -> BaseChatModel:
         model=settings.fast_model,
         temperature=0,
         max_tokens=1024,
-        api_key=settings.groq_api_key,
+        api_key=SecretStr(settings.groq_api_key),
     )

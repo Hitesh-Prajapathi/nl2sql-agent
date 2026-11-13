@@ -4,8 +4,9 @@ import json
 from typing import Any
 
 import asyncpg
-from nl2sql.models import ExecutionResult
+
 from nl2sql.config import get_settings
+from nl2sql.models import ExecutionResult
 
 settings = get_settings()
 ROW_CAP = settings.query_row_cap
@@ -40,20 +41,19 @@ async def execute_sql(
     Returns ExecutionResult - never raises.
     """
     try:
-        async with pool.acquire() as conn:
-            async with conn.transaction(readonly=True):
-                stmt = await conn.prepare(sql)
-                columns = [a.name for a in stmt.get_attributes()]
-                cursor = await stmt.cursor()
-                if row_cap is None:
-                    raw: list[Any] = []
-                    while True:
-                        batch = await cursor.fetch(_FETCH_BATCH)
-                        if not batch:
-                            break
-                        raw.extend(batch)
-                else:
-                    raw = await cursor.fetch(row_cap + 1)
+        async with pool.acquire() as conn, conn.transaction(readonly=True):
+            stmt = await conn.prepare(sql)
+            columns = [a.name for a in stmt.get_attributes()]
+            cursor = await stmt.cursor()
+            if row_cap is None:
+                raw: list[Any] = []
+                while True:
+                    batch = await cursor.fetch(_FETCH_BATCH)
+                    if not batch:
+                        break
+                    raw.extend(batch)
+            else:
+                raw = await cursor.fetch(row_cap + 1)
 
         truncated = row_cap is not None and len(raw) > row_cap
         if truncated:

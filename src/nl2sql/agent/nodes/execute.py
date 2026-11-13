@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import time
-from enum import Enum
+from enum import StrEnum
+from typing import Any
 
+import asyncpg
 import structlog
 from langchain_core.runnables import RunnableConfig
 
@@ -19,7 +21,8 @@ settings = get_settings()
 
 # ── Node 3: validate_sql ──────────────────────────────────────────────────────
 
-def validate_sql_node(state: AgentState) -> dict:
+
+def validate_sql_node(state: AgentState) -> dict[str, Any]:
     """Static AST validation — runs synchronously (no I/O)."""
     t0 = time.perf_counter()
     sql = state.get("generated_sql", "")
@@ -46,7 +49,8 @@ def validate_sql_node(state: AgentState) -> dict:
 
 # ── Node 4: execute_sql ───────────────────────────────────────────────────────
 
-async def execute_sql_node(state: AgentState, pool) -> dict:
+
+async def execute_sql_node(state: AgentState, pool: asyncpg.Pool) -> dict[str, Any]:
     """Execute the SQL in a read-only transaction."""
     t0 = time.perf_counter()
     result = await execute_sql(pool, state["generated_sql"])
@@ -75,11 +79,12 @@ async def execute_sql_node(state: AgentState, pool) -> dict:
 
 # ── Node 5: correct_sql ───────────────────────────────────────────────────────
 
-class ErrorClass(str, Enum):
-    SYNTAX = "syntax"       # Retryable: column not found, type mismatch, parse error
-    TIMEOUT = "timeout"     # Retryable: instruct "simplify or narrow query"
-    SAFETY = "safety"       # TERMINAL: write blocked by DB role or transaction
-    UNKNOWN = "unknown"     # Retryable: catch-all
+
+class ErrorClass(StrEnum):
+    SYNTAX = "syntax"  # Retryable: column not found, type mismatch, parse error
+    TIMEOUT = "timeout"  # Retryable: instruct "simplify or narrow query"
+    SAFETY = "safety"  # TERMINAL: write blocked by DB role or transaction
+    UNKNOWN = "unknown"  # Retryable: catch-all
 
 
 def _classify_error(error: str, is_safety_block: bool) -> ErrorClass:
@@ -94,7 +99,10 @@ def _classify_error(error: str, is_safety_block: bool) -> ErrorClass:
 
 
 CORRECTION_INSTRUCTIONS = {
-    ErrorClass.SYNTAX: "Fix the specific SQL error shown above. Pay attention to column names, table names, and join conditions.",
+    ErrorClass.SYNTAX: (
+        "Fix the specific SQL error shown above. "
+        "Pay attention to column names, table names, and join conditions."
+    ),
     ErrorClass.TIMEOUT: (
         "The query timed out. Simplify it: reduce the number of JOINs, "
         "remove expensive subqueries, add a LIMIT clause, or narrow the date range."
@@ -103,7 +111,7 @@ CORRECTION_INSTRUCTIONS = {
 }
 
 
-async def correct_sql_node(state: AgentState, config: RunnableConfig) -> dict:
+async def correct_sql_node(state: AgentState, config: RunnableConfig) -> dict[str, Any]:
     """
     Error-classified self-correction:
     - SAFETY errors are TERMINAL (no retry, no LLM call)
@@ -137,7 +145,10 @@ async def correct_sql_node(state: AgentState, config: RunnableConfig) -> dict:
             "attempt_count": attempt,
             "attempts": attempts,
             "status": "refused",
-            "final_answer": "This operation was blocked for safety reasons. Only read-only SELECT queries are permitted.",
+            "final_answer": (
+                "This operation was blocked for safety reasons. "
+                "Only read-only SELECT queries are permitted."
+            ),
             "final_sql": state.get("generated_sql", ""),
         }
 
@@ -164,11 +175,13 @@ async def correct_sql_node(state: AgentState, config: RunnableConfig) -> dict:
     llm = get_planner_llm()
     try:
         response = await llm.ainvoke(
-            [{"role": "system", "content": system_prompt},
-             {"role": "user", "content": "Return ONLY the corrected SQL query."}],
+            [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": "Return ONLY the corrected SQL query."},
+            ],
             config=config,
         )
-        corrected_sql = response.content.strip()
+        corrected_sql = str(response.content).strip()
         # Strip markdown fences if the model added them
         if corrected_sql.startswith("```"):
             corrected_sql = corrected_sql.split("```")[1]

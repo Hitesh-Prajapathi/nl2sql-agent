@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-import json
 import time
 import uuid
+from typing import Any, cast
 
 import structlog
 from langchain_core.messages import HumanMessage
+from langchain_core.runnables import RunnableConfig
 
 from nl2sql.agent.state import AgentState
-from langchain_core.runnables import RunnableConfig
-from nl2sql.llm.prompts.plan_sql import FOLLOWUP_TEMPLATE, PLAN_SQL_SYSTEM
+from nl2sql.llm.prompts.plan_sql import PLAN_SQL_SYSTEM
 from nl2sql.llm.providers import get_planner_llm
 from nl2sql.models import PlanResult
 from nl2sql.safety.validator import detect_prompt_injection
@@ -25,7 +25,7 @@ def refusal_text(db_display_name: str = "") -> str:
     return "I can only answer read-only data questions about the connected database."
 
 
-async def load_schema_node(state: AgentState, schema_provider: SchemaProvider) -> dict:
+async def load_schema_node(state: AgentState, schema_provider: SchemaProvider) -> dict[str, Any]:
     """Node 1: Load and cache the schema context."""
     t0 = time.perf_counter()
     schema_context = await schema_provider.get_context(state.get("question", ""))
@@ -47,7 +47,7 @@ async def load_schema_node(state: AgentState, schema_provider: SchemaProvider) -
     }
 
 
-async def plan_sql_node(state: AgentState, config: RunnableConfig) -> dict:
+async def plan_sql_node(state: AgentState, config: RunnableConfig) -> dict[str, Any]:
     """
     Node 2: Merged planner — one structured-output LLM call that:
     - Detects prompt injection → refuse
@@ -83,10 +83,15 @@ async def plan_sql_node(state: AgentState, config: RunnableConfig) -> dict:
     llm = get_planner_llm().with_structured_output(PlanResult, method="json_mode")
 
     try:
-        result: PlanResult = await llm.ainvoke(
-            [{"role": "system", "content": system_prompt},
-             {"role": "user", "content": question}],
-            config=config,
+        result = cast(
+            PlanResult,
+            await llm.ainvoke(
+                [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": question},
+                ],
+                config=config,
+            ),
         )
     except Exception as exc:
         elapsed_ms = round((time.perf_counter() - t0) * 1000)
@@ -133,7 +138,7 @@ async def plan_sql_node(state: AgentState, config: RunnableConfig) -> dict:
     }
 
 
-def _build_history_block(history: list[dict]) -> str:
+def _build_history_block(history: list[dict[str, Any]]) -> str:
     """Build a conversation history string from prior turns for prompt injection."""
     lines = ["━━━ CONVERSATION HISTORY (most recent last) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"]
     for i, turn in enumerate(history[-4:], 1):  # last 4 turns max
@@ -147,5 +152,8 @@ def _build_history_block(history: list[dict]) -> str:
             lines.append(f"  Agent (answer): {turn.get('answer', '')}")
         else:
             lines.append(f"  Agent: {turn.get('answer', '')}")
-    lines.append("Use this history to understand follow-up questions and references like 'their', 'those', 'the same', etc.")
+    lines.append(
+        "Use this history to understand follow-up questions and references "
+        "like 'their', 'those', 'the same', etc."
+    )
     return "\n".join(lines) + "\n"
