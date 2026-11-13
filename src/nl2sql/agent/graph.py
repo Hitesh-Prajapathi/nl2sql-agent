@@ -248,6 +248,10 @@ async def run_query(
         "final_sql": "",
         "trace_id": "",
         "timings": {},
+        # Populated by load_schema_node from the schema provider's DatabaseProfile
+        "db_id": "",
+        "db_display_name": "",
+        "data_date_ranges": {},
     }
 
     clean_name = question.strip().replace("\n", " ")
