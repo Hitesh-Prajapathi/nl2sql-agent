@@ -31,6 +31,15 @@ dev = [
     "httpx>=0.27",
 ]
 
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.8",
+    "mypy>=1.11",
+    "httpx>=0.27",
+]
+
 [project.scripts]
 nl2sql = "nl2sql.api.cli:app"
 
@@ -55,4 +64,8 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
+markers = [
+    "integration: needs a reachable Postgres (auto-skipped otherwise)",
+]

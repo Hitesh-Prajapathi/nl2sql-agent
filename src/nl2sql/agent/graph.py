@@ -6,6 +6,7 @@ import asyncpg
 import structlog
 from langchain_core.messages import BaseMessage
 from langgraph.graph import END, StateGraph
+from langgraph.graph.state import CompiledStateGraph
 
 from nl2sql.agent.nodes.execute import (
     correct_sql_node,
@@ -33,19 +34,31 @@ def route_after_plan(state: AgentState) -> str:
     return "validate"
 
 
+def _retry_budget_exhausted(state: AgentState) -> bool:
+    """
+    Retry-budget rule (single source of truth):
+    ``max_retry_attempts`` = number of correction LLM calls allowed.
+    ``attempt_count`` = correction LLM calls made so far. A correction is
+    allowed iff attempt_count < max_retry_attempts, so MAX_RETRY_ATTEMPTS=0
+    disables correction entirely.
+    """
+    return state.get("attempt_count", 0) >= settings.max_retry_attempts
+
+
 def route_after_validation(state: AgentState) -> str:
     if state.get("is_blocked"):
-        return "blocked"   # Terminal refusal, no retry
+        return "blocked"   # Terminal refusal (-> refuse_node), no retry
     if not state.get("is_valid_sql"):
-        # Retryable syntax error — increment attempt and route back
-        attempt = state.get("attempt_count", 0)
-        if attempt >= settings.max_retry_attempts:
+        # Retryable syntax error — correct if budget remains, else fail
+        if _retry_budget_exhausted(state):
             return "max_retries"
         return "correct"   # Feed validation error into correction node
     return "execute"
 
 
 def route_after_execution(state: AgentState) -> str:
+    # Budget is enforced by correct_sql_node (before its LLM call); it also
+    # needs to see safety blocks even when the budget is 0.
     if state.get("exec_error"):
         return "error"
     return "success"
@@ -54,9 +67,9 @@ def route_after_execution(state: AgentState) -> str:
 def route_after_correction(state: AgentState) -> str:
     if state.get("status") == "refused":
         return "end"   # Safety block — terminal
-    if state.get("attempt_count", 0) >= settings.max_retry_attempts:
-        return "fail"
-    return "validate"  # Route back through validation
+    if state.get("status") == "failed" or state.get("attempt_count", 0) > settings.max_retry_attempts:
+        return "fail"  # Budget exhausted before the LLM call -> max_retries_node
+    return "validate"  # A correction was made: validate (and run) its SQL
 
 
 # ── Clarification / refuse terminal nodes ────────────────────────────────────
@@ -71,7 +84,11 @@ def clarify_node(state: AgentState) -> dict:
 
 
 def refuse_node(state: AgentState) -> dict:
-    reason = state.get("refuse_reason", "This request cannot be processed.")
+    if state.get("is_blocked"):
+        # AST validator block (B1): carry the validation error into the answer
+        reason = f"Query blocked by safety validation: {state.get('validation_error') or 'unsafe SQL'}"
+    else:
+        reason = state.get("refuse_reason") or "This request cannot be processed."
     # Preserve 'failed' status if already set by LLM error path
     existing_status = state.get("status")
     status = existing_status if existing_status == "failed" else "refused"
@@ -84,29 +101,46 @@ def refuse_node(state: AgentState) -> dict:
 
 
 def max_retries_node(state: AgentState) -> dict:
+    """Terminal failure after the correction budget is spent (or disabled)."""
+    attempts = state.get("attempts", [])
+    last_error = (
+        state.get("exec_error")
+        or state.get("validation_error")
+        or (attempts[-1]["error"] if attempts else "")
+        or "Unknown error"
+    )
+    n = state.get("attempt_count", 0)
     return {
         "status": "failed",
         "final_answer": (
-            f"**Query failed** after {settings.max_retry_attempts} attempt(s). "
-            "Please try rephrasing your question."
+            f"**Query failed** after {n} correction attempt(s).\n\n"
+            f"**Last error:** {last_error}\n\n"
+            "Please try rephrasing your question or making it more specific."
         ),
+        "final_sql": state.get("generated_sql", ""),
     }
 
 
 # ── Graph builder ─────────────────────────────────────────────────────────────
 
-def build_graph(pool: asyncpg.Pool) -> StateGraph:
+def build_graph(
+    pool: asyncpg.Pool | None,
+    schema_provider: SchemaProvider | None = None,
+) -> CompiledStateGraph:
     """
     Build and compile the NL-to-SQL LangGraph.
 
     Graph topology:
       load_schema → plan_sql → {clarify|refuse → END, validate}
-                            validate → {blocked|max_retries → END, execute|correct}
+                            validate → {blocked → refuse, max_retries, execute|correct}
                             execute → {success → synthesize, error → correct}
-                            correct → {end (safety), fail → synthesize, validate (retry)}
-                            synthesize → END
+                            correct → {end (safety), fail → max_retries, validate (retry)}
+                            max_retries → END (status=failed); synthesize → END
+
+    synthesize is reachable ONLY after a successful execute.
     """
-    schema_provider: SchemaProvider = FullSchemaProvider(pool)
+    if schema_provider is None:
+        schema_provider = FullSchemaProvider(pool)  # type: ignore[arg-type]
 
     builder = StateGraph(AgentState)
 
@@ -140,12 +174,12 @@ def build_graph(pool: asyncpg.Pool) -> StateGraph:
     builder.add_edge("clarify", END)
     builder.add_edge("refuse", END)
 
-    # validate_sql → blocked (END) | max_retries (END) | correct | execute_sql
+    # validate_sql → blocked (refuse) | max_retries | correct | execute_sql
     builder.add_conditional_edges(
         "validate_sql",
         route_after_validation,
         {
-            "blocked": END,
+            "blocked": "refuse",
             "max_retries": "max_retries",
             "correct": "correct_sql",
             "execute": "execute_sql",
@@ -160,11 +194,11 @@ def build_graph(pool: asyncpg.Pool) -> StateGraph:
         {"success": "synthesize", "error": "correct_sql"},
     )
 
-    # correct_sql → end (safety) | fail (synthesize) | validate_sql (retry)
+    # correct_sql → end (safety) | fail (max_retries) | validate_sql (retry)
     builder.add_conditional_edges(
         "correct_sql",
         route_after_correction,
-        {"end": END, "fail": "synthesize", "validate": "validate_sql"},
+        {"end": END, "fail": "max_retries", "validate": "validate_sql"},
     )
 
     builder.add_edge("synthesize", END)
