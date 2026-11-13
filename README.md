@@ -1,94 +1,79 @@
 # NL-to-SQL Agent
 
-A production-grade Natural Language to SQL agent built using **LangGraph**, **Groq (Llama 3.3 70B)**, and **PostgreSQL**. 
-
-This agent safely translates user questions into SQL, executes them against a local database, and synthesizes the results—all while featuring a defense-in-depth safety model (AST validation) and deep observability via Langfuse.
-
-## Features
-- **LangGraph State Machine**: Isolated nodes for schema caching, planning, safety validation, execution, and synthesis.
-- **Full AST Safety Validation**: Parses LLM output using `sqlglot` to enforce strictly read-only (`SELECT`) queries. Drops any destructive operations instantly.
-- **Smart Schema Profiling**: Caches not just columns and types, but row counts and low-cardinality values to drastically reduce LLM hallucinations.
-- **End-to-End Tracing**: Fully instrumented with Langfuse for real-time observability of token usage, latency, and AST validation verdicts.
-
----
+A LangGraph agent that answers natural-language questions about an e-commerce PostgreSQL database. It plans a SQL query, validates it with `sqlglot` (Postgres dialect) before execution, runs it, and synthesizes an answer. It uses Groq models and optional Langfuse tracing.
 
 ## Prerequisites
-You will need the following installed:
-- [Docker](https://www.docker.com/) (for spinning up the local Postgres DB)
-- [uv](https://github.com/astral-sh/uv) (for ultra-fast Python package management)
-- Python 3.12+
+- Python 3.11+
+- [uv](https://github.com/astral-sh/uv)
+- Docker (for the local Postgres container)
+- A Groq API key
 
----
+## Setup
 
-## Setup Instructions
-
-### 1. Clone the repository and navigate into it
 ```bash
-git clone <your-repo-link>
-cd nl2sql-agent
+cp .env.example .env        # then set GROQ_API_KEY
+make setup                  # uv sync --extra dev
+make docker-up              # Postgres on localhost:5432, seeded from db/
 ```
 
-### 2. Set up the environment
-Create a `.env` file in the root of the project with your API keys:
+`.env.example` documents every setting. Its `DATABASE_URL` points at the Postgres container on `localhost`.
+
+## Running
+
+Interactive CLI:
+
 ```bash
-GROQ_API_KEY=your_groq_api_key_here
-LANGFUSE_PUBLIC_KEY=your_langfuse_public_key
-LANGFUSE_SECRET_KEY=your_langfuse_secret_key
-LANGFUSE_HOST=https://us.cloud.langfuse.com
+make cli                                  # multi-turn chat
+make ask Q="How many customers are in each tier?"
+uv run nl2sql ask "Top 3 customers by total spending" --json
 ```
 
-### 3. Install Dependencies
-We use `uv` to manage dependencies. Run:
+HTTP API (FastAPI, with reload):
+
 ```bash
-uv sync
-```
-This will automatically create a `.venv` and install everything needed.
-
-### 4. Start the Database
-The project includes a `docker-compose.yml` to spin up a local PostgreSQL instance seeded with test data (a SaaS CRM schema).
-```bash
-docker compose up -d
-```
-*Wait a few seconds for Postgres to initialize.*
-
-The project is running on:
-
-Web UI: http://localhost:8000
-Interactive API Docs (Swagger): http://localhost:8000/docs
-Health Check: http://localhost:8000/health
-
----
-
-## Running the Agent
-
-You can run the interactive REPL (Read-Eval-Print Loop) to chat with the agent in your terminal:
-```bash
-.venv/bin/python src/nl2sql/agent/run.py
+make dev                                  # UI http://localhost:8000 · API docs http://localhost:8000/docs
+curl -s localhost:8000/health
+curl -s -X POST localhost:8000/query -H 'content-type: application/json' \
+  -d '{"question": "How many orders were placed last month?"}'
 ```
 
-Try asking it questions like:
-- *"How many customers are in each tier?"*
-- *"Who are the top 3 customers by total spending?"*
-- *(Adversarial)* *"Drop the customers table."*
+Full stack in Docker (no reload, healthcheck on `/health`):
 
----
-
-## Running Benchmarks
-
-### 1. Latency Benchmark
-Tests the raw speed of the agent across 10 concurrent requests, isolating LLM time vs framework overhead.
 ```bash
-.venv/bin/python benchmarks/run_latency.py
+docker compose up --build app
 ```
 
-### 2. Golden Set / Accuracy Test
-Runs the agent against a suite of 20 pre-defined test cases (including complex joins and aggregations) and evaluates if the generated SQL executes correctly.
+For live reload with the source bind-mounted, use `docker compose --profile dev up --build app-dev`. Do not run it alongside `app`, since both publish port 8000.
+
+## Tests
+
 ```bash
-.venv/bin/python benchmarks/golden_set.py
+make test          # all tests
+make test-unit     # excludes tests marked integration
+make test-safety   # SQL safety and injection-guard tests
+make test-e2e      # graph end-to-end tests
 ```
 
----
+## Benchmarks
 
-## Technical Architecture
-Curious about how the graph is designed, how we handle safety, or how we plan to scale to 200+ tables? 
-Read the full technical teardown here: [WRITEUP.md](./WRITEUP.md)
+- `make bench` runs `benchmarks/run_latency.py` against a running API (`make dev` first). Results are written to `benchmarks/results/*.json`.
+- `make redteam-sql` runs the SQL red-team suite in `redteam/`.
+- `benchmarks/golden_set.py` is a data module of test cases. It is not a runnable script.
+
+## Results
+
+Benchmarks in progress; see docs/REFINEMENT_EXECUTION_PLAN.md
+
+<!-- RESULTS:START -->
+<!-- RESULTS:END -->
+
+## Development
+
+```bash
+make lint   # ruff
+make fmt    # ruff format
+make check  # mypy src/
+```
+
+## Architecture
+See [WRITEUP.md](./WRITEUP.md) for the design notes.
