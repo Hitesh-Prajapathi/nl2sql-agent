@@ -7,12 +7,14 @@ import structlog
 from langchain_core.runnables import RunnableConfig
 
 from nl2sql.agent.state import AgentState, AttemptRecord
+from nl2sql.config import get_settings
 from nl2sql.db.executor import execute_sql
 from nl2sql.llm.prompts.plan_sql import CORRECTION_SYSTEM
 from nl2sql.llm.providers import get_planner_llm
 from nl2sql.safety.validator import validate_sql
 
 log = structlog.get_logger()
+settings = get_settings()
 
 
 # ── Node 3: validate_sql ──────────────────────────────────────────────────────
@@ -109,7 +111,7 @@ async def correct_sql_node(state: AgentState, config: RunnableConfig) -> dict:
     - All others get a 'fix the specific error' instruction
     """
     attempt = state.get("attempt_count", 0) + 1
-    error = state.get("exec_error", state.get("validation_error", "Unknown error"))
+    error = state.get("exec_error") or state.get("validation_error") or "Unknown error"
     is_safety = state.get("is_safety_exec_block", False) or state.get("is_blocked", False)
 
     error_class = _classify_error(error, is_safety)
@@ -136,6 +138,16 @@ async def correct_sql_node(state: AgentState, config: RunnableConfig) -> dict:
             "attempts": attempts,
             "status": "refused",
             "final_answer": "This operation was blocked for safety reasons. Only read-only SELECT queries are permitted.",
+            "final_sql": state.get("generated_sql", ""),
+        }
+
+    # Retry budget: max_retry_attempts = number of correction LLM calls allowed.
+    # Check BEFORE spending an LLM call; 0 disables correction entirely.
+    if state.get("attempt_count", 0) >= settings.max_retry_attempts:
+        log.warning("correction_budget_exhausted", budget=settings.max_retry_attempts)
+        return {
+            "status": "failed",
+            "final_answer": f"**Query failed.** Last error: {error}",
             "final_sql": state.get("generated_sql", ""),
         }
 

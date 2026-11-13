@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -23,6 +24,12 @@ class Settings(BaseSettings):
 
     # ── Groq ──────────────────────────────────────────────────────────────────
     groq_api_key: str = Field(default="")
+
+    # ── LLM provider ──────────────────────────────────────────────────────────
+    # "groq" = real Groq models; "fake" = offline scripted/canned LLM (tests, load tests)
+    llm_provider: Literal["groq", "fake"] = Field(default="groq")
+    # Artificial per-call latency (ms) for the fake provider (load testing)
+    fake_llm_latency_ms: float = Field(default=0.0)
 
     # ── Models ────────────────────────────────────────────────────────────────
     planner_model: str = Field(default="llama-3.3-70b-versatile")
