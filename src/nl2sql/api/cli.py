@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import Any
 import uuid
+from typing import Any
 
 import structlog
 import typer
@@ -12,8 +12,8 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.syntax import Syntax
 
-from nl2sql.db.connection import close_pool, get_pool
 from nl2sql.agent.graph import build_graph, run_query
+from nl2sql.db.connection import close_pool, get_pool
 from nl2sql.telemetry.setup import flush_langfuse, get_langfuse_handler
 
 app = typer.Typer(name="nl2sql", help="NL-to-SQL LangGraph Agent CLI")
@@ -24,7 +24,9 @@ log = structlog.get_logger()
 @app.command()
 def ask(
     question: str = typer.Argument(..., help="Natural language question about the database"),
-    thread_id: str = typer.Option(None, "--thread", "-t", help="Thread ID for multi-turn conversation"),
+    thread_id: str = typer.Option(
+        None, "--thread", "-t", help="Thread ID for multi-turn conversation"
+    ),
     show_sql: bool = typer.Option(True, "--sql/--no-sql", help="Show generated SQL"),
     show_timings: bool = typer.Option(False, "--timings", help="Show per-node latency breakdown"),
     json_output: bool = typer.Option(False, "--json", help="Output raw JSON response"),
@@ -35,7 +37,9 @@ def ask(
 
 @app.command()
 def chat(
-    thread_id: str = typer.Option(None, "--thread", "-t", help="Thread ID (auto-generated if not set)"),
+    thread_id: str = typer.Option(
+        None, "--thread", "-t", help="Thread ID (auto-generated if not set)"
+    ),
 ) -> None:
     """Start an interactive multi-turn chat session."""
     asyncio.run(_chat(thread_id))
@@ -52,7 +56,6 @@ async def _ask(
     graph = build_graph(pool)
     thread = thread_id or str(uuid.uuid4())
     handler = get_langfuse_handler(session_id=thread)
-    config: dict[str, Any] = {"callbacks": [handler]} if handler else {}
 
     try:
         state = await run_query(
@@ -73,13 +76,15 @@ async def _chat(thread_id: str | None) -> None:
     thread = thread_id or str(uuid.uuid4())
     handler = get_langfuse_handler(session_id=thread)
 
-    console.print(Panel(
-        f"[bold cyan]NL-to-SQL Agent[/bold cyan]\n"
-        f"Thread: [dim]{thread}[/dim]\n"
-        "Type [bold]exit[/bold] or [bold]quit[/bold] to end the session.",
-        title="💬 Chat Mode",
-        border_style="cyan",
-    ))
+    console.print(
+        Panel(
+            f"[bold cyan]NL-to-SQL Agent[/bold cyan]\n"
+            f"Thread: [dim]{thread}[/dim]\n"
+            "Type [bold]exit[/bold] or [bold]quit[/bold] to end the session.",
+            title="💬 Chat Mode",
+            border_style="cyan",
+        )
+    )
 
     messages: list[Any] = []
     try:
@@ -107,7 +112,9 @@ async def _chat(thread_id: str | None) -> None:
         console.print("\n[dim]Session ended.[/dim]")
 
 
-def _print_response(state: dict[str, Any], show_sql: bool, show_timings: bool, json_output: bool) -> None:
+def _print_response(
+    state: dict[str, Any], show_sql: bool, show_timings: bool, json_output: bool
+) -> None:
     if json_output:
         output = {
             "status": state.get("status"),

@@ -1,31 +1,34 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 import structlog
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from langgraph.graph.state import CompiledStateGraph
 from pydantic import BaseModel
 
 from nl2sql.agent.graph import build_graph, run_query
+from nl2sql.agent.state import AgentState
 from nl2sql.config import get_settings
 from nl2sql.db.connection import close_pool, get_pool
-from nl2sql.models import AgentResponse
 from nl2sql.telemetry.setup import flush_langfuse, get_langfuse_handler
 
 log = structlog.get_logger()
 settings = get_settings()
 
-_graph = None
+_graph: CompiledStateGraph[AgentState, Any, AgentState, AgentState] | None = None
 # In-memory session store: thread_id → list of conversation turns
-_sessions: dict[str, list[dict]] = {}
+_sessions: dict[str, list[dict[str, Any]]] = {}
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     global _graph
     pool = await get_pool()
     _graph = build_graph(pool)
@@ -59,8 +62,8 @@ class QueryResponse(BaseModel):
     status: str
     answer: str | None
     sql: str | None
-    columns: list[str]           # raw column names from DB result
-    rows: list[dict]             # raw result rows for frontend table rendering
+    columns: list[str]  # raw column names from DB result
+    rows: list[dict[str, Any]]  # raw result rows for frontend table rendering
     assumptions: list[str]
     attempts: int
     trace_id: str | None
@@ -68,12 +71,12 @@ class QueryResponse(BaseModel):
 
 
 @app.get("/health")
-async def health():
+async def health() -> dict[str, str]:
     return {"status": "ok", "version": settings.agent_version}
 
 
 @app.post("/query", response_model=QueryResponse)
-async def query(req: QueryRequest):
+async def query(req: QueryRequest) -> QueryResponse:
     if not req.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty.")
 
@@ -81,24 +84,31 @@ async def query(req: QueryRequest):
     history = _sessions.get(thread_id, [])
     lf_handler = get_langfuse_handler(session_id=thread_id)
 
+    if _graph is None:
+        raise HTTPException(status_code=503, detail="Agent not initialised.")
+
     try:
         state = await run_query(
-            _graph, req.question, thread_id=thread_id,
+            _graph,
+            req.question,
+            thread_id=thread_id,
             conversation_history=history,
             callbacks=[lf_handler] if lf_handler else None,
         )
     except Exception as exc:
         log.error("query_error", error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     # Persist this turn for future follow-ups
-    _sessions[thread_id] = history + [{
-        "question": req.question,
-        "decision": state.get("decision"),
-        "clarification": state.get("clarification_question", ""),
-        "sql": state.get("final_sql") or "",
-        "answer": state.get("final_answer") or "",
-    }]
+    _sessions[thread_id] = history + [
+        {
+            "question": req.question,
+            "decision": state.get("decision"),
+            "clarification": state.get("clarification_question", ""),
+            "sql": state.get("final_sql") or "",
+            "answer": state.get("final_answer") or "",
+        }
+    ]
 
     return QueryResponse(
         status=state.get("status", "failed"),

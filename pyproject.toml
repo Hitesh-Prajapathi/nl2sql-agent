@@ -56,7 +56,14 @@ line-length = 100
 target-version = "py311"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP"]
+select = ["E", "F", "I", "UP", "B", "ASYNC", "S", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]
+"benchmarks/**" = ["S310", "T201"]
+# long natural-language strings (golden questions, LLM prompt text) are data, not code
+"benchmarks/golden_set.py" = ["E501"]
+"src/nl2sql/llm/prompts/*.py" = ["E501"]
 
 [tool.mypy]
 python_version = "3.11"

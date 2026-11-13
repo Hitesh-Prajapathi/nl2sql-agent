@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 from typing import Any
 
@@ -32,9 +31,7 @@ async def get_catalog_hash(pool: asyncpg.Pool) -> str:
     return result or ""
 
 
-async def introspect_schema(
-    pool: asyncpg.Pool, profile: DatabaseProfile | None = None
-) -> str:
+async def introspect_schema(pool: asyncpg.Pool, profile: DatabaseProfile | None = None) -> str:
     """
     Dynamically build a schema context string from pg_catalog:
       1. Tables, columns, types, nullable
@@ -109,6 +106,12 @@ async def introspect_schema(
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+
+def quote_ident(name: str) -> str:
+    """Quote a catalog-derived identifier for safe interpolation into SQL."""
+    return '"' + name.replace('"', '""') + '"'
+
+
 async def _get_tables(conn: asyncpg.Connection) -> list[dict[str, Any]]:
     rows = await conn.fetch(
         """
@@ -121,7 +124,9 @@ async def _get_tables(conn: asyncpg.Connection) -> list[dict[str, Any]]:
 
 
 async def _get_row_count(conn: asyncpg.Connection, table: str) -> int:
-    return await conn.fetchval(f'SELECT COUNT(*) FROM "{table}"') or 0
+    # identifier comes from information_schema and is quoted via quote_ident
+    sql = f"SELECT COUNT(*) FROM {quote_ident(table)}"  # noqa: S608
+    return await conn.fetchval(sql) or 0
 
 
 async def _get_columns(conn: asyncpg.Connection, table: str) -> list[dict[str, Any]]:
@@ -177,9 +182,13 @@ async def _get_check_constraints(conn: asyncpg.Connection, table: str) -> list[s
 async def _get_distinct_values(
     conn: asyncpg.Connection, table: str, column: str
 ) -> list[str] | None:
-    rows = await conn.fetch(
-        f'SELECT DISTINCT "{column}" FROM "{table}" WHERE "{column}" IS NOT NULL ORDER BY "{column}" LIMIT 50'
+    col, tbl = quote_ident(column), quote_ident(table)
+    # identifiers come from information_schema and are quoted via quote_ident
+    sql = (
+        f"SELECT DISTINCT {col} FROM {tbl} "  # noqa: S608
+        f"WHERE {col} IS NOT NULL ORDER BY {col} LIMIT 50"
     )
+    rows = await conn.fetch(sql)
     if not rows:
         return None
     vals = [str(r[column]) for r in rows]
@@ -189,14 +198,17 @@ async def _get_distinct_values(
 async def _get_date_range(
     conn: asyncpg.Connection, table: str, column: str
 ) -> tuple[str, str] | None:
-    row = await conn.fetchrow(
-        f'SELECT MIN("{column}") AS mn, MAX("{column}") AS mx FROM "{table}"'
-    )
+    col = quote_ident(column)
+    # identifiers come from information_schema and are quoted via quote_ident
+    sql = f"SELECT MIN({col}) AS mn, MAX({col}) AS mx FROM {quote_ident(table)}"  # noqa: S608
+    row = await conn.fetchrow(sql)
     if row and row["mn"] and row["mx"]:
         return (str(row["mn"]), str(row["mx"]))
     return None
 
 
 async def _get_sample_rows(conn: asyncpg.Connection, table: str) -> list[dict[str, Any]]:
-    rows = await conn.fetch(f'SELECT * FROM "{table}" LIMIT {SAMPLE_ROWS}')
+    # identifier comes from information_schema; SAMPLE_ROWS is a module constant
+    sql = f"SELECT * FROM {quote_ident(table)} LIMIT {int(SAMPLE_ROWS)}"  # noqa: S608
+    rows = await conn.fetch(sql)
     return [dict(r) for r in rows]

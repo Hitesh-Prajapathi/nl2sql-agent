@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import time
+from typing import Any
 
 import structlog
 from langchain_core.messages import AIMessage
@@ -18,7 +19,7 @@ _TEMPORAL_WORDS = ["month", "week", "year", "date", "recent", "last", "today"]
 SMALL_TABLE_ROW_LIMIT = 50
 
 
-async def synthesize_node(state: AgentState, config: RunnableConfig) -> dict:
+async def synthesize_node(state: AgentState, config: RunnableConfig) -> dict[str, Any]:
     """
     Node 6: Hybrid answer synthesis.
     - Empty result     → template mentioning data date range
@@ -53,13 +54,16 @@ async def synthesize_node(state: AgentState, config: RunnableConfig) -> dict:
 
     # ── Table output (≤ 50 rows, or if user explicitly asks to list/name) ────
     q_lower = question.lower()
-    is_list_intent = any(kw in q_lower for kw in ["list", "name", "who", "show", "give", "display", "all"])
+    is_list_intent = any(
+        kw in q_lower for kw in ["list", "name", "who", "show", "give", "display", "all"]
+    )
 
     if len(rows) <= SMALL_TABLE_ROW_LIMIT or is_list_intent:
         display_rows = rows[:SMALL_TABLE_ROW_LIMIT]
         answer = "### Results\n\n" + _markdown_table(columns, display_rows)
         if len(rows) > len(display_rows) or truncated:
-            answer += f"\n\n*Showing first {len(display_rows)} of {state.get('exec_row_count', len(rows))} rows.*"
+            total = state.get("exec_row_count", len(rows))
+            answer += f"\n\n*Showing first {len(display_rows)} of {total} rows.*"
         if assumptions:
             answer += "\n\n> **Assumptions:** " + "; ".join(assumptions)
         return _build_output(state, answer, t0)
@@ -72,8 +76,10 @@ async def synthesize_node(state: AgentState, config: RunnableConfig) -> dict:
         f"Here are the first {len(sample)} rows:\n{json.dumps(sample, default=str)}\n\n"
         f"Assumptions made: {'; '.join(assumptions) if assumptions else 'None'}\n\n"
         "Guidelines:\n"
-        "- If the user wants to see specific records, present the data as a clean markdown table or bullet list.\n"
-        "- If the user asks an analytical question (trends, totals, comparisons), summarise the key findings in 2-4 sentences with **bold** highlights.\n"
+        "- If the user wants to see specific records, present the data as a clean "
+        "markdown table or bullet list.\n"
+        "- If the user asks an analytical question (trends, totals, comparisons), "
+        "summarise the key findings in 2-4 sentences with **bold** highlights.\n"
         "- Do not invent data. Refer only to what is in the data above.\n"
         "- Do NOT use emojis."
     )
@@ -83,7 +89,7 @@ async def synthesize_node(state: AgentState, config: RunnableConfig) -> dict:
             [{"role": "user", "content": prompt}],
             config=config,
         )
-        answer = response.content.strip()
+        answer = str(response.content).strip()
         if truncated:
             answer += f"\n\n_(Showing first {state['exec_row_count']} of potentially more rows)_"
     except Exception as exc:
@@ -95,15 +101,12 @@ async def synthesize_node(state: AgentState, config: RunnableConfig) -> dict:
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _empty_answer(
-    question: str, date_ranges: dict[str, tuple[str, str]] | None = None
-) -> str:
+
+def _empty_answer(question: str, date_ranges: dict[str, tuple[str, str]] | None = None) -> str:
     base = "No rows matched your query."
     q_lower = question.lower()
     if date_ranges and any(kw in q_lower for kw in _TEMPORAL_WORDS):
-        lines = [
-            f"- `{col}`: {lo} to {hi}" for col, (lo, hi) in sorted(date_ranges.items())
-        ]
+        lines = [f"- `{col}`: {lo} to {hi}" for col, (lo, hi) in sorted(date_ranges.items())]
         base += (
             "\n\n**Note:** Date columns in this database cover these ranges; "
             "date filters outside them will return no results.\n" + "\n".join(lines)
@@ -111,9 +114,10 @@ def _empty_answer(
     return base
 
 
-def _format_cell(val) -> str:
+def _format_cell(val: Any) -> str:
     """Format a cell value: round floats/Decimals to 2dp, leave strings/ints as-is."""
     import decimal
+
     if isinstance(val, float):
         return f"{val:,.2f}" if val != int(val) else str(int(val))
     if isinstance(val, decimal.Decimal):
@@ -125,7 +129,7 @@ def _format_cell(val) -> str:
     return str(val) if val is not None else ""
 
 
-def _markdown_table(columns: list[str], rows: list[dict]) -> str:
+def _markdown_table(columns: list[str], rows: list[dict[str, Any]]) -> str:
     header = "| " + " | ".join(columns) + " |"
     divider = "| " + " | ".join(["---"] * len(columns)) + " |"
     body_rows = []
@@ -135,7 +139,7 @@ def _markdown_table(columns: list[str], rows: list[dict]) -> str:
     return "\n".join([header, divider] + body_rows)
 
 
-def _build_output(state: AgentState, answer: str, t0: float) -> dict:
+def _build_output(state: AgentState, answer: str, t0: float) -> dict[str, Any]:
     elapsed_ms = round((time.perf_counter() - t0) * 1000)
     timings = dict(state.get("timings", {}))
     timings["synthesize_ms"] = elapsed_ms
@@ -160,7 +164,7 @@ def _build_output(state: AgentState, answer: str, t0: float) -> dict:
     }
 
 
-def _format_failure(state: AgentState, t0: float) -> dict:
+def _format_failure(state: AgentState, t0: float) -> dict[str, Any]:
     attempts = state.get("attempts", [])
     attempt_count = state.get("attempt_count", 0)
     answer = (

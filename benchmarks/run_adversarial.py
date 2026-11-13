@@ -4,16 +4,17 @@ Adversarial test runner for the NL-to-SQL agent.
 
 Runs the adversarial questions against the live API to confirm they are blocked.
 """
+
 import argparse
 import json
-import time
-import uuid
 import urllib.request
+import uuid
+from typing import Any
 
 from golden_set import ADVERSARIAL_QUESTIONS
 
 
-def call_api(base_url: str, question: str) -> dict:
+def call_api(base_url: str, question: str) -> dict[str, Any]:
     thread_id = str(uuid.uuid4())
     payload = json.dumps({"question": question, "thread_id": thread_id}).encode()
     req = urllib.request.Request(
@@ -23,14 +24,15 @@ def call_api(base_url: str, question: str) -> dict:
         method="POST",
     )
     with urllib.request.urlopen(req, timeout=60) as resp:
-        return json.loads(resp.read())
+        result: dict[str, Any] = json.loads(resp.read())
+        return result
 
 
 def run(base_url: str) -> None:
-    print(f"\n{'='*70}")
-    print(f"  NL-to-SQL Adversarial Benchmark")
+    print(f"\n{'=' * 70}")
+    print("  NL-to-SQL Adversarial Benchmark")
     print(f"  Target: {base_url}")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
 
     passed = 0
     total = len(ADVERSARIAL_QUESTIONS)
@@ -51,9 +53,9 @@ def run(base_url: str) -> None:
             print(f"  ❌ ERROR: {exc}")
         print()
 
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print(f"  Result: {passed}/{total} adversarial cases passed")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
 
 
 if __name__ == "__main__":

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import functools
+from typing import Any
 
 import asyncpg
 import structlog
+from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.messages import BaseMessage
+from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
@@ -24,6 +27,7 @@ settings = get_settings()
 
 
 # ── Routing functions ─────────────────────────────────────────────────────────
+
 
 def route_after_plan(state: AgentState) -> str:
     decision = state.get("decision")
@@ -47,12 +51,12 @@ def _retry_budget_exhausted(state: AgentState) -> bool:
 
 def route_after_validation(state: AgentState) -> str:
     if state.get("is_blocked"):
-        return "blocked"   # Terminal refusal (-> refuse_node), no retry
+        return "blocked"  # Terminal refusal (-> refuse_node), no retry
     if not state.get("is_valid_sql"):
         # Retryable syntax error — correct if budget remains, else fail
         if _retry_budget_exhausted(state):
             return "max_retries"
-        return "correct"   # Feed validation error into correction node
+        return "correct"  # Feed validation error into correction node
     return "execute"
 
 
@@ -66,15 +70,19 @@ def route_after_execution(state: AgentState) -> str:
 
 def route_after_correction(state: AgentState) -> str:
     if state.get("status") == "refused":
-        return "end"   # Safety block — terminal
-    if state.get("status") == "failed" or state.get("attempt_count", 0) > settings.max_retry_attempts:
+        return "end"  # Safety block — terminal
+    if (
+        state.get("status") == "failed"
+        or state.get("attempt_count", 0) > settings.max_retry_attempts
+    ):
         return "fail"  # Budget exhausted before the LLM call -> max_retries_node
     return "validate"  # A correction was made: validate (and run) its SQL
 
 
 # ── Clarification / refuse terminal nodes ────────────────────────────────────
 
-def clarify_node(state: AgentState) -> dict:
+
+def clarify_node(state: AgentState) -> dict[str, Any]:
     question = state.get("clarification_question", "Could you please clarify your question?")
     return {
         "status": "needs_clarification",
@@ -83,10 +91,12 @@ def clarify_node(state: AgentState) -> dict:
     }
 
 
-def refuse_node(state: AgentState) -> dict:
+def refuse_node(state: AgentState) -> dict[str, Any]:
     if state.get("is_blocked"):
         # AST validator block (B1): carry the validation error into the answer
-        reason = f"Query blocked by safety validation: {state.get('validation_error') or 'unsafe SQL'}"
+        reason = (
+            f"Query blocked by safety validation: {state.get('validation_error') or 'unsafe SQL'}"
+        )
     else:
         reason = state.get("refuse_reason") or "This request cannot be processed."
     # Preserve 'failed' status if already set by LLM error path
@@ -100,7 +110,7 @@ def refuse_node(state: AgentState) -> dict:
     }
 
 
-def max_retries_node(state: AgentState) -> dict:
+def max_retries_node(state: AgentState) -> dict[str, Any]:
     """Terminal failure after the correction budget is spent (or disabled)."""
     attempts = state.get("attempts", [])
     last_error = (
@@ -123,10 +133,11 @@ def max_retries_node(state: AgentState) -> dict:
 
 # ── Graph builder ─────────────────────────────────────────────────────────────
 
+
 def build_graph(
     pool: asyncpg.Pool | None,
     schema_provider: SchemaProvider | None = None,
-) -> CompiledStateGraph:
+) -> CompiledStateGraph[AgentState, Any, AgentState, AgentState]:
     """
     Build and compile the NL-to-SQL LangGraph.
 
@@ -140,7 +151,7 @@ def build_graph(
     synthesize is reachable ONLY after a successful execute.
     """
     if schema_provider is None:
-        schema_provider = FullSchemaProvider(pool)  # type: ignore[arg-type]
+        schema_provider = FullSchemaProvider(pool)
 
     builder = StateGraph(AgentState)
 
@@ -208,16 +219,17 @@ def build_graph(
 
 # ── Convenience run function ──────────────────────────────────────────────────
 
+
 async def run_query(
-    graph,
+    graph: CompiledStateGraph[AgentState, Any, AgentState, AgentState],
     question: str,
     thread_id: str = "default",
     messages: list[BaseMessage] | None = None,
-    conversation_history: list[dict] | None = None,
-    callbacks: list | None = None,
-) -> dict:
+    conversation_history: list[dict[str, Any]] | None = None,
+    callbacks: list[BaseCallbackHandler] | None = None,
+) -> dict[str, Any]:
     """Invoke the graph and return the final state."""
-    initial_state: AgentState = {  # type: ignore[assignment]
+    initial_state: AgentState = {
         "question": question,
         "thread_id": thread_id,
         "messages": messages or [],
@@ -257,7 +269,7 @@ async def run_query(
     clean_name = question.strip().replace("\n", " ")
     trace_name = clean_name if len(clean_name) <= 60 else f"{clean_name[:57]}..."
 
-    config: dict = {
+    config: RunnableConfig = {
         "configurable": {"thread_id": thread_id},
         "metadata": {
             "langfuse_session_id": thread_id,

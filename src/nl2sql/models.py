@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
 from typing import Any, Literal
 
+from pydantic import BaseModel, Field
 
 # ── Planner output ────────────────────────────────────────────────────────────
+
 
 class PlanResult(BaseModel):
     """
@@ -19,6 +20,7 @@ class PlanResult(BaseModel):
     Ref: Pourreza & Rafiei, "DIN-SQL: Decomposed In-Context Learning
     of Text-to-SQL with Self-Correction", NeurIPS 2023.
     """
+
     # ── Step 1: Schema Linking (DIN-SQL phase 1) ──────────────────────────────
     relevant_tables: list[str] = Field(
         default_factory=list,
@@ -52,32 +54,32 @@ class PlanResult(BaseModel):
         description="What to do: generate SQL, ask for clarification, or refuse the request."
     )
     sql: str | None = Field(
-        default=None,
-        description="The generated SELECT SQL query. Required when decision='sql'."
+        default=None, description="The generated SELECT SQL query. Required when decision='sql'."
     )
     assumptions: list[str] = Field(
         default_factory=list,
-        description="List of assumptions made (e.g. 'Using payments.amount for revenue'). Always populate."
+        description=(
+            "List of assumptions made (e.g. 'Using payments.amount for revenue'). Always populate."
+        ),
     )
     clarification: str | None = Field(
         default=None,
-        description="The clarifying question to ask the user. Required when decision='clarify'."
+        description="The clarifying question to ask the user. Required when decision='clarify'.",
     )
     reason: str | None = Field(
-        default=None,
-        description="Explanation for refusal. Required when decision='refuse'."
+        default=None, description="Explanation for refusal. Required when decision='refuse'."
     )
     is_followup: bool = Field(
-        default=False,
-        description="True if this question references a previous turn's result."
+        default=False, description="True if this question references a previous turn's result."
     )
 
 
 # ── SQL Validation ────────────────────────────────────────────────────────────
 
+
 class SQLValidationResult(BaseModel):
     is_valid: bool
-    is_blocked: bool = False   # True = terminal refusal, NOT retryable
+    is_blocked: bool = False  # True = terminal refusal, NOT retryable
     error: str | None = None
 
     @property
@@ -86,6 +88,7 @@ class SQLValidationResult(BaseModel):
 
 
 # ── SQL Execution ─────────────────────────────────────────────────────────────
+
 
 class ExecutionResult(BaseModel):
     success: bool
@@ -99,6 +102,7 @@ class ExecutionResult(BaseModel):
 
 # ── Final Agent Response (returned from every exit path) ─────────────────────
 
+
 class AttemptRecord(BaseModel):
     attempt: int
     sql: str
@@ -108,6 +112,7 @@ class AttemptRecord(BaseModel):
 
 class AgentResponse(BaseModel):
     """Uniform response shape from every graph exit path."""
+
     status: Literal["answered", "needs_clarification", "refused", "failed"]
     answer: str | None = None
     sql: str | None = None

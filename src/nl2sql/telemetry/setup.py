@@ -1,15 +1,14 @@
 from __future__ import annotations
 
+import os
 from typing import Any
+
 import structlog
 
 from nl2sql.config import get_settings
 
 settings = get_settings()
 log = structlog.get_logger()
-
-
-import os
 
 _client_initialized = False
 
@@ -32,7 +31,9 @@ def get_langfuse_handler(session_id: str | None = None) -> Any | None:
     """
     global _client_initialized
     if not settings.langfuse_public_key or not settings.langfuse_secret_key:
-        log.warning("langfuse_not_configured", msg="Set LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY")
+        log.warning(
+            "langfuse_not_configured", msg="Set LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY"
+        )
         return None
 
     _sync_env_vars()
@@ -67,6 +68,7 @@ def flush_langfuse() -> None:
     _sync_env_vars()
     try:
         from langfuse import Langfuse
+
         Langfuse().flush()
     except Exception as exc:
         log.error("langfuse_flush_error", error=str(exc))

@@ -14,7 +14,7 @@ class DatabaseProfile:
     date_ranges: dict[str, tuple[str, str]] = field(default_factory=dict)
 
     @classmethod
-    def from_db_name(cls, db_name: str) -> "DatabaseProfile":
+    def from_db_name(cls, db_name: str) -> DatabaseProfile:
         return cls(db_id=db_name, display_name=db_name)
 
     def header(self) -> str:
