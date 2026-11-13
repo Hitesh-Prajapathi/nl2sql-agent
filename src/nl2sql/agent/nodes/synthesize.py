@@ -13,7 +13,7 @@ from nl2sql.llm.providers import get_fast_llm
 log = structlog.get_logger()
 
 # Threshold for skipping LLM synthesis (template is used instead)
-SMALL_TABLE_ROW_LIMIT = 10
+SMALL_TABLE_ROW_LIMIT = 50
 
 
 async def synthesize_node(state: AgentState, config: RunnableConfig) -> dict:
@@ -21,11 +21,8 @@ async def synthesize_node(state: AgentState, config: RunnableConfig) -> dict:
     Node 6: Hybrid answer synthesis.
     - Empty result     → template mentioning data date range
     - Single scalar    → template ("The answer is X")
-    - ≤ 10 rows        → markdown table (no LLM call)
-    - Larger result    → 8B LLM narration
-
-    If status is already 'refused' or 'failed' (routed here for graceful failure),
-    just format the failure message.
+    - ≤ 50 rows        → markdown table (no LLM call, deterministic)
+    - Larger result    → 8B LLM narration or table listing
     """
     t0 = time.perf_counter()
 
@@ -52,26 +49,31 @@ async def synthesize_node(state: AgentState, config: RunnableConfig) -> dict:
             answer += "\n\n> **Assumptions:** " + "; ".join(assumptions)
         return _build_output(state, answer, t0)
 
-    # ── Small table — markdown template ───────────────────────────────────────
-    if len(rows) <= SMALL_TABLE_ROW_LIMIT:
-        answer = "### Results\n\n" + _markdown_table(columns, rows)
-        if truncated:
-            answer += f"\n\n*Showing first {len(rows)} rows — results were truncated.*"
+    # ── Table output (≤ 50 rows, or if user explicitly asks to list/name) ────
+    q_lower = question.lower()
+    is_list_intent = any(kw in q_lower for kw in ["list", "name", "who", "show", "give", "display", "all"])
+
+    if len(rows) <= SMALL_TABLE_ROW_LIMIT or is_list_intent:
+        display_rows = rows[:SMALL_TABLE_ROW_LIMIT]
+        answer = "### Results\n\n" + _markdown_table(columns, display_rows)
+        if len(rows) > len(display_rows) or truncated:
+            answer += f"\n\n*Showing first {len(display_rows)} of {state.get('exec_row_count', len(rows))} rows.*"
         if assumptions:
             answer += "\n\n> **Assumptions:** " + "; ".join(assumptions)
         return _build_output(state, answer, t0)
 
     # ── Larger result — cheap LLM narration ──────────────────────────────────
-    sample = rows[:20]
+    sample = rows[:25]
     prompt = (
         f"Question: {question}\n\n"
         f"SQL returned {state['exec_row_count']} rows. "
-        f"Here are the first {len(sample)}:\n{json.dumps(sample, default=str)}\n\n"
+        f"Here are the first {len(sample)} rows:\n{json.dumps(sample, default=str)}\n\n"
         f"Assumptions made: {'; '.join(assumptions) if assumptions else 'None'}\n\n"
-        "Summarise the key findings in 2-4 sentences using markdown formatting. "
-        "Use **bold** for key numbers and findings. "
-        "Do not invent numbers. Refer only to what is in the data above. "
-        "Do NOT use emojis."
+        "Guidelines:\n"
+        "- If the user wants to see specific records, present the data as a clean markdown table or bullet list.\n"
+        "- If the user asks an analytical question (trends, totals, comparisons), summarise the key findings in 2-4 sentences with **bold** highlights.\n"
+        "- Do not invent data. Refer only to what is in the data above.\n"
+        "- Do NOT use emojis."
     )
     llm = get_fast_llm()
     try:
@@ -84,7 +86,7 @@ async def synthesize_node(state: AgentState, config: RunnableConfig) -> dict:
             answer += f"\n\n_(Showing first {state['exec_row_count']} of potentially more rows)_"
     except Exception as exc:
         log.error("synthesize_llm_error", error=str(exc))
-        answer = _markdown_table(columns, rows[:10])
+        answer = _markdown_table(columns, rows[:25])
 
     return _build_output(state, answer, t0)
 

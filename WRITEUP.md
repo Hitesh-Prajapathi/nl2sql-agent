@@ -6,7 +6,7 @@ Hey, I'm Hitesh Prajapathi. Here is a breakdown of how I approached building thi
 
 ## Architecture & Graph Design
 
-Instead of a messy script, I built the agent using LangGraph. It runs as a six-node state machine with a strict left-to-right flow. Having a formal graph makes it much easier to reason about early exits (like catching prompt injection right away) and managing retry loops. 
+Instead of a messy script, I built the agent using LangGraph. It runs as a six-node state machine with a strict left-to-right flow. Having a formal graph makes it much easier to reason about early exits (like catching prompt injection right away) and managing retry loops.
 
 Here is the flow:
 ```

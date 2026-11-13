@@ -216,7 +216,17 @@ async def run_query(
         "timings": {},
     }
 
-    config: dict = {"configurable": {"thread_id": thread_id}}
+    clean_name = question.strip().replace("\n", " ")
+    trace_name = clean_name if len(clean_name) <= 60 else f"{clean_name[:57]}..."
+
+    config: dict = {
+        "configurable": {"thread_id": thread_id},
+        "metadata": {
+            "langfuse_session_id": thread_id,
+            "langfuse_trace_name": trace_name,
+            "agent_version": settings.agent_version,
+        },
+    }
     if callbacks:
         config["callbacks"] = callbacks
     return await graph.ainvoke(initial_state, config=config)

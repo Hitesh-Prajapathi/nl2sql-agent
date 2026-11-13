@@ -55,7 +55,12 @@ async def _ask(
     config: dict[str, Any] = {"callbacks": [handler]} if handler else {}
 
     try:
-        state = await run_query(graph, question, thread_id=thread)
+        state = await run_query(
+            graph,
+            question,
+            thread_id=thread,
+            callbacks=[handler] if handler else None,
+        )
         _print_response(state, show_sql, show_timings, json_output)
     finally:
         flush_langfuse()
@@ -87,7 +92,13 @@ async def _chat(thread_id: str | None) -> None:
             if question.strip().lower() in ("exit", "quit", "q"):
                 break
 
-            state = await run_query(graph, question, thread_id=thread, messages=messages)
+            state = await run_query(
+                graph,
+                question,
+                thread_id=thread,
+                messages=messages,
+                callbacks=[handler] if handler else None,
+            )
             messages = state.get("messages", [])
             _print_response(state, show_sql=True, show_timings=False, json_output=False)
     finally:

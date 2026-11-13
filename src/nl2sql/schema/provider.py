@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 import asyncpg
 import structlog
 
+from nl2sql.config import get_settings
 from nl2sql.schema.introspect import get_catalog_hash, introspect_schema
 
 log = structlog.get_logger()
@@ -33,10 +34,14 @@ class FullSchemaProvider(SchemaProvider):
 
     async def get_context(self, question: str = "") -> str:
         current_hash = await get_catalog_hash(self._pool)
-        if self._cache and self._cache_hash == current_hash:
+        settings = get_settings()
+        is_expired = (time.time() - self._built_at) > settings.schema_cache_ttl_seconds
+
+        if self._cache and self._cache_hash == current_hash and not is_expired:
             return self._cache
 
-        log.info("schema_cache_miss", reason="catalog_changed_or_cold")
+        reason = "ttl_expired" if (self._cache and is_expired) else "catalog_changed_or_cold"
+        log.info("schema_cache_miss", reason=reason)
         t0 = time.perf_counter()
         context = await introspect_schema(self._pool)
         elapsed = (time.perf_counter() - t0) * 1000
@@ -50,3 +55,4 @@ class FullSchemaProvider(SchemaProvider):
     def invalidate(self) -> None:
         self._cache = None
         self._cache_hash = None
+        self._built_at = 0.0

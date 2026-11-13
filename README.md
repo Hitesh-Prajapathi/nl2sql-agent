@@ -51,6 +51,12 @@ docker compose up -d
 ```
 *Wait a few seconds for Postgres to initialize.*
 
+The project is running on:
+
+Web UI: http://localhost:8000
+Interactive API Docs (Swagger): http://localhost:8000/docs
+Health Check: http://localhost:8000/health
+
 ---
 
 ## Running the Agent

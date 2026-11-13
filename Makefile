@@ -27,7 +27,7 @@ docker-logs:
 
 # ── Run ───────────────────────────────────────────────────────────────────────
 dev:
-	uvicorn nl2sql.api.app:app --reload --port 8000
+	uv run uvicorn src.nl2sql.api.app:app --reload --port 8000
 
 cli:
 	uv run nl2sql chat
