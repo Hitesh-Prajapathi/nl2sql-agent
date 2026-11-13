@@ -1,0 +1,29 @@
+# Virtualenvs and VCS
+.venv
+.git
+.gitignore
+
+# Caches and build artifacts
+__pycache__
+**/__pycache__
+*.pyc
+*.pyo
+*.egg-info
+dist
+.pytest_cache
+.mypy_cache
+.ruff_cache
+*.log
+
+# Secrets and local config
+.env
+.env.*
+
+# Runtime output and data
+results
+benchmarks/results
+data
+
+# Docs and tests are not needed in the image
+docs
+tests

@@ -19,17 +19,47 @@ services:
       timeout: 5s
       retries: 10
 
+  # Production-style app: built image, no reload, no source bind mount.
   app:
     build: .
+    image: nl2sql-agent:local
     container_name: nl2sql_app
     depends_on:
       postgres:
         condition: service_healthy
-    environment:
-      DATABASE_URL: postgresql://nl2sql_reader:reader_pass@postgres:5432/nl2sql_assignment
-      DATABASE_ADMIN_URL: postgresql://postgres:postgres@postgres:5432/nl2sql_assignment
     env_file:
-      - .env
+      - path: .env
+        required: false
+    environment:
+      # Compose-only variables (not DATABASE_URL) so a localhost DSN in .env
+      # cannot override the in-network hostname "postgres".
+      DATABASE_URL: ${COMPOSE_DATABASE_URL:-postgresql://nl2sql_reader:reader_pass@postgres:5432/nl2sql_assignment}
+      DATABASE_ADMIN_URL: ${COMPOSE_DATABASE_ADMIN_URL:-postgresql://postgres:postgres@postgres:5432/nl2sql_assignment}
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys, urllib.request; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health', timeout=4).status == 200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+  # Development: same image, uvicorn --reload, and ./src bind-mounted.
+  # Enable with `docker compose --profile dev up app-dev`. Do not run it
+  # alongside `app` because both publish port 8000.
+  app-dev:
+    build: .
+    image: nl2sql-agent:local
+    profiles: ["dev"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: ${COMPOSE_DATABASE_URL:-postgresql://nl2sql_reader:reader_pass@postgres:5432/nl2sql_assignment}
+      DATABASE_ADMIN_URL: ${COMPOSE_DATABASE_ADMIN_URL:-postgresql://postgres:postgres@postgres:5432/nl2sql_assignment}
     ports:
       - "8000:8000"
     volumes:
