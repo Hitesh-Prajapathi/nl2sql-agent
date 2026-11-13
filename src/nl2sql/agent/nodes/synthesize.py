@@ -12,6 +12,8 @@ from nl2sql.llm.providers import get_fast_llm
 
 log = structlog.get_logger()
 
+_TEMPORAL_WORDS = ["month", "week", "year", "date", "recent", "last", "today"]
+
 # Threshold for skipping LLM synthesis (template is used instead)
 SMALL_TABLE_ROW_LIMIT = 50
 
@@ -38,7 +40,7 @@ async def synthesize_node(state: AgentState, config: RunnableConfig) -> dict:
 
     # ── Empty result ──────────────────────────────────────────────────────────
     if not rows:
-        answer = _empty_answer(question)
+        answer = _empty_answer(question, state.get("data_date_ranges") or {})
         return _build_output(state, answer, t0)
 
     # ── Single scalar ─────────────────────────────────────────────────────────
@@ -93,13 +95,18 @@ async def synthesize_node(state: AgentState, config: RunnableConfig) -> dict:
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _empty_answer(question: str) -> str:
+def _empty_answer(
+    question: str, date_ranges: dict[str, tuple[str, str]] | None = None
+) -> str:
     base = "No rows matched your query."
     q_lower = question.lower()
-    if any(kw in q_lower for kw in ["month", "week", "year", "date", "recent", "last", "today"]):
+    if date_ranges and any(kw in q_lower for kw in _TEMPORAL_WORDS):
+        lines = [
+            f"- `{col}`: {lo} to {hi}" for col, (lo, hi) in sorted(date_ranges.items())
+        ]
         base += (
-            "\n\n**Note:** All order data in this database falls between "
-            "**2026-01-01** and **2026-06-30**. Date filters outside this range will return no results."
+            "\n\n**Note:** Date columns in this database cover these ranges; "
+            "date filters outside them will return no results.\n" + "\n".join(lines)
         )
     return base
 

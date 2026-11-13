@@ -18,6 +18,13 @@ from nl2sql.schema.provider import SchemaProvider
 log = structlog.get_logger()
 
 
+def refusal_text(db_display_name: str = "") -> str:
+    """Generic refusal message that names the connected database when known."""
+    if db_display_name:
+        return f"I can only answer read-only data questions about the {db_display_name} database."
+    return "I can only answer read-only data questions about the connected database."
+
+
 async def load_schema_node(state: AgentState, schema_provider: SchemaProvider) -> dict:
     """Node 1: Load and cache the schema context."""
     t0 = time.perf_counter()
@@ -26,8 +33,12 @@ async def load_schema_node(state: AgentState, schema_provider: SchemaProvider) -
     timings = dict(state.get("timings", {}))
     timings["load_schema_ms"] = elapsed_ms
     log.info("load_schema_done", duration_ms=elapsed_ms)
+    profile = getattr(schema_provider, "profile", None)
     return {
         "schema_context": schema_context,
+        "db_id": profile.db_id if profile else "",
+        "db_display_name": profile.display_name if profile else "",
+        "data_date_ranges": dict(profile.date_ranges) if profile else {},
         "trace_id": state.get("trace_id") or str(uuid.uuid4()),
         "timings": timings,
         "attempt_count": 0,
@@ -55,7 +66,7 @@ async def plan_sql_node(state: AgentState, config: RunnableConfig) -> dict:
             "decision": "refuse",
             "refuse_reason": "Prompt injection attempt detected.",
             "status": "refused",
-            "final_answer": "I can only answer questions about the e-commerce database.",
+            "final_answer": refusal_text(state.get("db_display_name", "")),
         }
 
     # Build follow-up context from conversation history (app-level session store)

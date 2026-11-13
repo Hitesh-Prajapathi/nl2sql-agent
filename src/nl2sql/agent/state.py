@@ -22,6 +22,10 @@ class AgentState(TypedDict):
 
     # ── Schema ────────────────────────────────────────────────────────────────
     schema_context: str                  # Dynamically introspected DDL + profiling
+    # Optional (readers must use .get()): database profile info
+    db_id: str
+    db_display_name: str
+    data_date_ranges: dict[str, tuple[str, str]]   # "table.column" -> (min, max)
 
     # ── Planning ──────────────────────────────────────────────────────────────
     decision: Literal["sql", "clarify", "refuse"] | None
