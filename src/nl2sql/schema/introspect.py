@@ -6,6 +6,8 @@ from typing import Any
 
 import asyncpg
 
+from nl2sql.schema.profile import DatabaseProfile
+
 # Low-cardinality column threshold: if a column has ≤ this many distinct values,
 # include them in the schema context for value grounding.
 LOW_CARDINALITY_THRESHOLD = 30
@@ -30,7 +32,9 @@ async def get_catalog_hash(pool: asyncpg.Pool) -> str:
     return result or ""
 
 
-async def introspect_schema(pool: asyncpg.Pool) -> str:
+async def introspect_schema(
+    pool: asyncpg.Pool, profile: DatabaseProfile | None = None
+) -> str:
     """
     Dynamically build a schema context string from pg_catalog:
       1. Tables, columns, types, nullable
@@ -41,13 +45,16 @@ async def introspect_schema(pool: asyncpg.Pool) -> str:
       6. Date min/max for date columns
       7. 3 sample rows per table
 
-    Returns a structured string for LLM consumption.
+    If a profile is given, it supplies the header and receives date ranges
+    (keyed "table.column"). Returns a structured string for LLM consumption.
     """
     async with pool.acquire() as conn:
+        if profile is None:
+            db_name = await conn.fetchval("SELECT current_database()")
+            profile = DatabaseProfile.from_db_name(db_name)
+        profile.date_ranges.clear()
         tables = await _get_tables(conn)
-        output_parts: list[str] = [
-            "=== DATABASE SCHEMA (E-COMMERCE PLATFORM) ===\n",
-        ]
+        output_parts: list[str] = [profile.header()]
 
         for table in tables:
             table_name = table["table_name"]
@@ -75,7 +82,8 @@ async def introspect_schema(pool: asyncpg.Pool) -> str:
                 if col["data_type"] == "date":
                     date_range = await _get_date_range(conn, table_name, col["column_name"])
                     if date_range:
-                        output_parts.append(f"      Range: {date_range}")
+                        profile.date_ranges[f"{table_name}.{col['column_name']}"] = date_range
+                        output_parts.append(f"      Range: {date_range[0]} to {date_range[1]}")
 
             if fks:
                 output_parts.append("  Foreign Keys:")
@@ -178,12 +186,14 @@ async def _get_distinct_values(
     return vals
 
 
-async def _get_date_range(conn: asyncpg.Connection, table: str, column: str) -> str | None:
+async def _get_date_range(
+    conn: asyncpg.Connection, table: str, column: str
+) -> tuple[str, str] | None:
     row = await conn.fetchrow(
         f'SELECT MIN("{column}") AS mn, MAX("{column}") AS mx FROM "{table}"'
     )
     if row and row["mn"] and row["mx"]:
-        return f"{row['mn']} to {row['mx']}"
+        return (str(row["mn"]), str(row["mx"]))
     return None
 
 

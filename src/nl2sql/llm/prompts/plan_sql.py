@@ -106,12 +106,12 @@ For a refuse decision:
 
 For a clarify decision:
 {{
-  "relevant_tables": ["customers.name", "customers.email", "customers.customer_id"],
-  "ambiguity_analysis": "Two customers share the name Rahul Menon (customer_id 13: rahul.menon11@example.com, customer_id 14: rahul.menon14@example.com). The question is ambiguous.",
+  "relevant_tables": ["person.full_name", "person.email", "person.person_id"],
+  "ambiguity_analysis": "Two rows in person share the name Jane Placeholder (person_id 101: jane.a@example.invalid, person_id 102: jane.b@example.invalid). The question is ambiguous.",
   "decision": "clarify",
   "sql": null,
   "assumptions": [],
-  "clarification": "There are two customers named Rahul Menon: one with email rahul.menon11@example.com (customer_id 13) and one with rahul.menon14@example.com (customer_id 14). Which one did you mean?",
+  "clarification": "There are two records named Jane Placeholder: one with email jane.a@example.invalid (person_id 101) and one with jane.b@example.invalid (person_id 102). Which one did you mean?",
   "reason": null,
   "is_followup": false
 }}

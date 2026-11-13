@@ -7,6 +7,7 @@ import asyncpg
 import structlog
 
 from nl2sql.schema.introspect import get_catalog_hash, introspect_schema
+from nl2sql.schema.profile import DatabaseProfile
 
 log = structlog.get_logger()
 
@@ -25,8 +26,9 @@ class FullSchemaProvider(SchemaProvider):
     Cache is invalidated by a hash of pg_catalog — change-based, not time-based.
     """
 
-    def __init__(self, pool: asyncpg.Pool) -> None:
+    def __init__(self, pool: asyncpg.Pool, profile: DatabaseProfile | None = None) -> None:
         self._pool = pool
+        self._profile = profile
         self._cache: str | None = None
         self._cache_hash: str | None = None
         self._built_at: float = 0.0
@@ -38,7 +40,11 @@ class FullSchemaProvider(SchemaProvider):
 
         log.info("schema_cache_miss", reason="catalog_changed_or_cold")
         t0 = time.perf_counter()
-        context = await introspect_schema(self._pool)
+        if self._profile is None:
+            async with self._pool.acquire() as conn:
+                db_name = await conn.fetchval("SELECT current_database()")
+            self._profile = DatabaseProfile.from_db_name(db_name)
+        context = await introspect_schema(self._pool, self._profile)
         elapsed = (time.perf_counter() - t0) * 1000
         log.info("schema_introspected", duration_ms=round(elapsed))
 
@@ -46,6 +52,11 @@ class FullSchemaProvider(SchemaProvider):
         self._cache_hash = current_hash
         self._built_at = time.time()
         return context
+
+    @property
+    def profile(self) -> DatabaseProfile | None:
+        """Available after the first get_context call (or if passed in)."""
+        return self._profile
 
     def invalidate(self) -> None:
         self._cache = None
