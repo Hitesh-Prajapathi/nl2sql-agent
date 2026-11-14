@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import random
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -16,7 +17,7 @@ from nl2sql.config import get_settings
 from nl2sql.db.registry import DatabaseRegistry
 from nl2sql.eval.dataset import Question, dataset_hash, load_questions, load_table_columns
 from nl2sql.eval.llm_hook import DiskCache, EvalLLMHook
-from nl2sql.eval.pricing import load_pricing
+from nl2sql.eval.promptsize import compute_prompt_sizes, size_stats
 from nl2sql.eval.results import (
     build_results,
     prompt_hash,
@@ -24,10 +25,18 @@ from nl2sql.eval.results import (
     variant_label,
     write_results,
 )
-from nl2sql.eval.runner import RunConfig, run_questions
+from nl2sql.eval.runner import (
+    SCORED_STATUSES,
+    CheckpointMismatch,
+    RunConfig,
+    run_questions,
+)
 from nl2sql.eval.sqlrunner import RegistrySqlRunner, result_digest
 from nl2sql.eval.summary import summarize
-from nl2sql.eval.variants import FullVariant, NaiveVariant, Variant, build_ddl
+from nl2sql.eval.variants import SMALL_VARIANTS, VARIANTS, FullVariant, NaiveVariant, Variant
+from nl2sql.llm.pacer import Pacer, set_pacer
+from nl2sql.schema.capped import DEFAULT_TOTAL_CAP_TOKENS
+from nl2sql.schema.ddl import build_ddl
 from nl2sql.schema.introspect import build_profile_data, estimate_tokens, render_context
 from nl2sql.schema.profile import DatabaseProfile
 from nl2sql.schema.store import load_profile, profile_path, save_profile
@@ -170,45 +179,111 @@ def check_gold(
     typer.echo(f"wrote {out}")
 
 
+def _sample_per_difficulty(questions: list[Question], per_level: int, seed: int) -> list[Question]:
+    """``per_level`` questions of each difficulty, chosen with a fixed seed (stable ids)."""
+    rng = random.Random(seed)  # noqa: S311 - reproducible sampling, not crypto
+    picked: list[Question] = []
+    for level in ("simple", "moderate", "challenging"):
+        pool = sorted((q for q in questions if q.difficulty == level), key=lambda q: q.question_id)
+        picked += rng.sample(pool, min(per_level, len(pool)))
+    return sorted(picked, key=lambda q: q.question_id)
+
+
+def _checkpoint_fingerprint(
+    variant: str,
+    use_evidence: bool,
+    prompt_sha: str,
+    dataset_sha: str,
+    profile_hashes: dict[str, str],
+    cap: int | None,
+) -> dict[str, Any]:
+    s = get_settings()
+    return {
+        "variant": variant,
+        "evidence": use_evidence,
+        "planner_model": s.planner_model,
+        "fallback_model": s.fallback_model,
+        "fast_model": s.fast_model,
+        "reasoning_effort": s.llm_reasoning_effort,
+        "planner_max_tokens": s.planner_max_tokens,
+        "max_retry_attempts": s.max_retry_attempts,
+        "prompt_sha256": prompt_sha,
+        "dataset_sha256": dataset_sha,
+        "profile_sha256": profile_hashes,
+        "prompt_cap_tokens": cap,
+    }
+
+
 @app.command()
 def run(
-    variant: str = typer.Option("full", help="full | naive"),
+    variant: str = typer.Option("full", help="full | naive | full_small | naive_small"),
     limit: int = typer.Option(None, help="evaluate only the first N questions"),
     ids: str = typer.Option(None, help="comma-separated question_ids"),
     spread: bool = typer.Option(False, help="with --limit: round-robin across db_ids"),
+    sample_per_difficulty: int = typer.Option(
+        None, "--sample-per-difficulty", help="N questions of each difficulty (see --seed)"
+    ),
+    seed: int = typer.Option(42, help="seed for --sample-per-difficulty"),
+    prompt_cap: int = typer.Option(
+        DEFAULT_TOTAL_CAP_TOKENS,
+        "--prompt-cap",
+        help="*_small variants: max tokens of prompt + question + evidence + max output",
+    ),
     no_cache: bool = typer.Option(False, "--no-cache", help="bypass the LLM response cache"),
     no_evidence: bool = typer.Option(False, "--no-evidence", help="do not pass BIRD evidence"),
+    no_pacing: bool = typer.Option(
+        False, "--no-pacing", help="disable the token-bucket / daily-budget pacer"
+    ),
+    fresh: bool = typer.Option(False, "--fresh", help="delete the checkpoint and start over"),
     concurrency: int = typer.Option(4),
     ves_repeats: int = typer.Option(3, help="timing repeats for R-VES (official uses 100)"),
     data_dir: Path = typer.Option(None),
     questions_file: Path = typer.Option(None, help="alternative questions JSON (same format)"),
     profile_dir: Path = typer.Option(None),
     cache_dir: Path = typer.Option(Path(".eval_cache/llm")),
+    usage_file: Path = typer.Option(
+        Path(".eval_cache/groq_usage.json"), help="per-model, per-UTC-day request counter"
+    ),
     out_dir: Path = typer.Option(Path("results")),
     checkpoint: Path = typer.Option(None, help="JSONL checkpoint (default next to the results)"),
 ) -> None:
-    """Run the evaluation, write results/bird_minidev_<variant>_<date>.{json,md}."""
-    if variant not in ("full", "naive"):
-        raise typer.BadParameter("variant must be 'full' or 'naive'")
+    """Run the evaluation, write results/bird_minidev_<variant>_<date>.{json,md}.
+
+    The checkpoint name has no date, so rerunning the same command (for example the next day,
+    after the daily request budget stopped the run) continues where it left off.
+    """
+    if variant not in VARIANTS:
+        raise typer.BadParameter(f"variant must be one of {', '.join(VARIANTS)}")
+    small = variant in SMALL_VARIANTS
     s = get_settings()
     data_dir = data_dir or Path(s.bird_data_dir)
     profile_dir = profile_dir or Path(s.profile_dir)
     all_questions = load_questions(data_dir, questions_file)
-    questions = _select(all_questions, limit, ids, spread)
+    if sample_per_difficulty is not None:
+        questions = _sample_per_difficulty(all_questions, sample_per_difficulty, seed)
+        note: str | None = f"n{len(questions)}-seed{seed}"
+    else:
+        questions = _select(all_questions, limit, ids, spread)
+        note = f"n{len(questions)}" if len(questions) != len(all_questions) else None
     if not questions:
         raise typer.BadParameter("no questions selected")
     table_columns: dict[str, dict[str, list[str]]] = (
         load_table_columns(data_dir) if questions_file is None else {}
     )
     use_evidence = not no_evidence
-    note = None
-    if len(questions) != len(all_questions):
-        note = f"n{len(questions)}"
     label = variant_label(variant, use_evidence, note)
     base = result_basename(label)
-    cp = checkpoint or out_dir / f"{base}.jsonl"
+    cp = checkpoint or out_dir / f"bird_minidev_{label}.jsonl"  # no date: resumable across days
+    if fresh and cp.exists():
+        cp.unlink()
     started = datetime.now(UTC)
     t0 = time.perf_counter()
+    cap = prompt_cap if small else None
+
+    pacer: Pacer | None = None
+    if s.llm_provider == "groq" and s.llm_pacing_enabled and not no_pacing:
+        pacer = Pacer(tpm=s.llm_tpm_limit, rpd=s.llm_rpd_limit, state_path=usage_file)
+    set_pacer(pacer)  # also disables the lazy in-memory pacer when --no-pacing
 
     async def go() -> dict[str, Any]:
         dbs = sorted({q.db_id for q in questions})
@@ -217,37 +292,84 @@ def run(
             await _ensure_profiles(builder, dbs, profile_dir)
         finally:
             await builder.close()
-        registry = DatabaseRegistry.for_bird(dbs, profile_dir=profile_dir)
+        registry = DatabaseRegistry.for_bird(
+            dbs, profile_dir=profile_dir, prompt_cap_tokens=cap if variant == "full_small" else None
+        )
         try:
             hook = EvalLLMHook(None if no_cache else DiskCache(cache_dir))
             variant_impl: Variant
-            profile_hashes = {
-                d: str(load_profile(profile_path(d, profile_dir)).get("content_sha256", ""))
-                for d in dbs
-            }
-            if variant == "full":
-                variant_impl = FullVariant(build_graph(registry=registry), hook)
-            else:
-                ddl = {d: build_ddl(load_profile(profile_path(d, profile_dir))) for d in dbs}
+            profiles = {d: load_profile(profile_path(d, profile_dir)) for d in dbs}
+            profile_hashes = {d: str(p.get("content_sha256", "")) for d, p in profiles.items()}
+            size_stats_ = size_stats(
+                compute_prompt_sizes(
+                    variant,
+                    questions,
+                    profiles,
+                    use_evidence=use_evidence,
+                    total_cap_tokens=prompt_cap,
+                    max_output_tokens=s.planner_max_tokens,
+                    table_budget=s.profile_table_token_budget,
+                ),
+                cap,
+            )
+            if small and size_stats_["over_cap"]:
+                raise typer.BadParameter(
+                    f"{size_stats_['over_cap']} questions exceed the {cap}-token cap"
+                )
+            if variant in ("full", "full_small"):
+                variant_impl = FullVariant(build_graph(registry=registry), hook, name=variant)
+            elif variant == "naive":
+                ddl = {d: build_ddl(p) for d, p in profiles.items()}
                 variant_impl = NaiveVariant(ddl, hook)
+            else:
+                variant_impl = NaiveVariant(
+                    {},
+                    hook,
+                    name=variant,
+                    profiles=profiles,
+                    total_cap_tokens=prompt_cap,
+                    max_output_tokens=s.planner_max_tokens,
+                )
+            prompt_sha = prompt_hash()
+            ds_sha = dataset_hash(all_questions)
             cfg = RunConfig(
                 variant=variant,
                 use_evidence=use_evidence,
                 concurrency=concurrency,
                 checkpoint=cp,
                 ves_repeats=ves_repeats,
+                pacer=pacer,
+                budget_models=(s.planner_model,) if pacer else (),
+                calls_per_question=(1 + s.max_retry_attempts) if variant.startswith("full") else 1,
+                fingerprint=_checkpoint_fingerprint(
+                    variant, use_evidence, prompt_sha, ds_sha, profile_hashes, cap
+                ),
             )
 
             def progress(rec: dict[str, Any], n: int, total: int) -> None:
+                legs = ",".join(
+                    f"{c['role']}:{'fb' if c['leg'] == 'fallback' else 'pl'}"
+                    for c in rec.get("llm_calls") or []
+                )
                 typer.echo(
                     f"[{n}/{total}] q{rec['question_id']} {rec['db_id']} {rec['status']} "
-                    f"ex={rec['ex']} {rec['latency_s']}s"
+                    f"ex={rec['ex']} {rec['latency_s']}s calls={legs or '-'}"
                 )
 
-            records = await run_questions(
-                questions, variant_impl, RegistrySqlRunner(registry), table_columns, cfg, progress
-            )
+            try:
+                records = await run_questions(
+                    questions,
+                    variant_impl,
+                    RegistrySqlRunner(registry),
+                    table_columns,
+                    cfg,
+                    progress,
+                )
+            except CheckpointMismatch as exc:
+                raise typer.BadParameter(str(exc)) from exc
             cache = hook.cache
+            finished = sum(1 for r in records if r["status"] in SCORED_STATUSES)
+            remaining = len(questions) - finished
             flags = {
                 "variant": variant,
                 "evidence": use_evidence,
@@ -259,12 +381,27 @@ def run(
                 "max_retry_attempts": s.max_retry_attempts,
                 "llm_provider": s.llm_provider,
                 "profile_table_token_budget": s.profile_table_token_budget,
+                "prompt_cap_total_tokens": cap,
+                "max_output_tokens": s.planner_max_tokens,
+                "prompt_size_estimate": size_stats_,
+                "pacing": (
+                    {
+                        "tpm": s.llm_tpm_limit,
+                        "rpd": s.llm_rpd_limit,
+                        "requests_today": pacer.snapshot(),
+                    }
+                    if pacer
+                    else None
+                ),
+                "stopped_reason": cfg.state.stopped_reason,
+                "remaining_questions": remaining,
                 "sql_timeout_s": cfg.sql_timeout_s,
                 "n_questions": len(questions),
                 "question_ids": [q.question_id for q in questions] if note else "all",
+                "sample_seed": seed if sample_per_difficulty is not None else None,
                 "resumed_from_checkpoint": str(cp),
             }
-            summary = summarize(records, load_pricing())
+            summary = summarize(records)
             return build_results(
                 label=label,
                 variant=variant,
@@ -273,11 +410,12 @@ def run(
                     "planner": s.planner_model,
                     "fast": s.fast_model,
                     "fallback": s.fallback_model,
+                    "reasoning_effort": s.llm_reasoning_effort,
                 },
-                dataset_sha256=dataset_hash(all_questions),
+                dataset_sha256=ds_sha,
                 dataset_size=len(all_questions),
                 profile_hashes=profile_hashes,
-                prompt_sha256=prompt_hash(),
+                prompt_sha256=prompt_sha,
                 records=records,
                 summary=summary,
                 started_at=started,
@@ -293,6 +431,20 @@ def run(
         json.dumps({k: sm.get(k) for k in ("n_total", "n_scored", "n_infra_error", "ex")}, indent=1)
     )
     typer.echo(f"wrote {jpath} and {mpath}")
+    fl = results["meta"]["flags"]
+    if fl["stopped_reason"]:
+        hours = pacer.seconds_until_reset() / 3600 if pacer else 0.0
+        typer.echo(
+            f"STOPPED (resumable): {fl['stopped_reason']}\n"
+            f"{fl['remaining_questions']} of {len(questions)} questions remain. The daily limit "
+            f"resets at 00:00 UTC (in {hours:.1f} h); rerun the SAME command to continue from "
+            f"{cp}."
+        )
+    elif fl["remaining_questions"]:
+        typer.echo(
+            f"{fl['remaining_questions']} questions ended in infrastructure errors; rerun the "
+            "same command to retry them."
+        )
 
 
 if __name__ == "__main__":

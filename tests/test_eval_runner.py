@@ -15,10 +15,11 @@ from nl2sql.eval.llm_hook import CachedLLM, DiskCache, EvalLLMHook, UsageCollect
 from nl2sql.eval.metrics import Row
 from nl2sql.eval.runner import RunConfig, load_checkpoint, run_questions
 from nl2sql.eval.sqlrunner import SqlOutcome
-from nl2sql.eval.variants import FullVariant, NaiveVariant, Prediction, build_ddl, clean_sql
+from nl2sql.eval.variants import FullVariant, NaiveVariant, Prediction, clean_sql
 from nl2sql.llm import providers
 from nl2sql.llm.providers import FakeLLMScript
 from nl2sql.models import ExecutionResult, PlanResult
+from nl2sql.schema.ddl import build_ddl
 from tests.fakes import StubSchemaProvider
 
 GOLD_A = "SELECT COUNT(*) FROM t1"

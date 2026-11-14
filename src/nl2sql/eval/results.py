@@ -93,7 +93,6 @@ def build_results(
             "started_at": started_at.isoformat(timespec="seconds"),
             "finished_at": datetime.now(UTC).isoformat(timespec="seconds"),
             "wall_seconds": round(wall_s, 1),
-            "cost_usd": summary.get("cost_usd"),
         },
         "summary": summary,
         "records": records,
@@ -124,9 +123,8 @@ def _num(x: Any, fmt: str = "{:.2f}") -> str:
 
 
 def headline_row(results: dict[str, Any]) -> str:
-    s, meta = results["summary"], results["meta"]
+    s = results["summary"]
     rates = s.get("rates", {})
-    cost = meta.get("cost_usd")
     lat = s.get("latency_s", {})
     return (
         f"| {results['label']} | {s['n_scored']}/{s['n_total']} | {_cell(s.get('ex'))} | "
@@ -134,15 +132,14 @@ def headline_row(results: dict[str, Any]) -> str:
         f"{_cell(rates.get('clarify'))} / {_cell(rates.get('refuse'))} / "
         f"{_cell(rates.get('failed'))} | "
         f"{_num(s.get('mean_attempts'))} | "
-        f"{'n/a (no price configured)' if cost is None else f'${cost:.4f}'} | "
         f"{_num(lat.get('p50'), '{:.1f}')} / {_num(lat.get('p95'), '{:.1f}')} |"
     )
 
 
 HEADLINE_HEAD = (
     "| run | scored/total | EX % [95% CI] | Soft F1 % | R-VES | clarify / refuse / failed % | "
-    "mean attempts | cost | latency P50 / P95 s |\n"
-    "|---|---|---|---|---|---|---|---|---|"
+    "mean attempts | latency P50 / P95 s |\n"
+    "|---|---|---|---|---|---|---|---|"
 )
 
 
@@ -205,7 +202,8 @@ def render_markdown(results: dict[str, Any]) -> str:
             f"- retry recovery: {rr['recovered']}/{rr['n_with_failed_attempt']} "
             f"({_num(rr['rate'])}) questions correct after at least one failed attempt",
             f"- tokens: {s['tokens_total']}",
-            f"- cost note: {s['cost_note']}",
+            f"- model usage (who answered): {json.dumps(s['model_usage']['by_model'])}; "
+            f"calls by role/leg: {json.dumps(s['model_usage']['calls_by_role_and_leg'])}",
             f"- latency note: {s['latency_s']['note']}",
             "- R-VES: indicative only (shared database, configurable repeats; see "
             "`nl2sql.eval.metrics`)",

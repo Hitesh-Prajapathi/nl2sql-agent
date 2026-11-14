@@ -7,7 +7,6 @@ from collections import defaultdict
 from collections.abc import Sequence
 from typing import Any
 
-from nl2sql.eval.pricing import compute_cost
 from nl2sql.eval.stats import bootstrap_ci, mean, percentile
 
 DIFFICULTIES = ("simple", "moderate", "challenging")
@@ -47,9 +46,33 @@ def _avg(values: list[float]) -> float | None:
     return None if m is None else round(m, 4)
 
 
-def summarize(
-    records: list[dict[str, Any]], pricing: dict[str, Any] | None = None
-) -> dict[str, Any]:
+def model_usage(records: list[dict[str, Any]]) -> dict[str, Any]:
+    """Calls and tokens per model that actually answered, and the planner / fallback split."""
+    by_model: dict[str, dict[str, int]] = {}
+    by_role: dict[str, dict[str, int]] = {}
+    for r in records:
+        for c in r.get("llm_calls") or []:
+            m = by_model.setdefault(
+                c["model"], {"calls": 0, "cached_calls": 0, "input_tokens": 0, "output_tokens": 0}
+            )
+            m["calls"] += 1
+            m["cached_calls"] += int(bool(c.get("cached")))
+            m["input_tokens"] += int(c.get("input_tokens", 0))
+            m["output_tokens"] += int(c.get("output_tokens", 0))
+            role = by_role.setdefault(c.get("role") or "unknown", {"primary": 0, "fallback": 0})
+            role[c.get("leg", "primary")] = role.get(c.get("leg", "primary"), 0) + 1
+    total = sum(v["calls"] for v in by_model.values())
+    fallback = sum(v.get("fallback", 0) for v in by_role.values())
+    return {
+        "by_model": by_model,
+        "calls_by_role_and_leg": by_role,
+        "fallback_calls": fallback,
+        "fallback_share": round(fallback / total, 4) if total else None,
+        "note": "tokens are booked to the model that produced the response (planner or fallback)",
+    }
+
+
+def summarize(records: list[dict[str, Any]]) -> dict[str, Any]:
     """Questions with ``infra_error`` are excluded from every rate and listed separately."""
     infra = [r for r in records if r["status"] == "infra_error"]
     scored = [r for r in records if r["status"] != "infra_error"]
@@ -129,13 +152,8 @@ def summarize(
         "llm_calls": sum(u["calls"] for m in tokens.values() for u in m.values()),
         "cached_calls": sum(u["cached_calls"] for m in tokens.values() for u in m.values()),
     }
-    cost, missing = compute_cost(tokens, pricing or {})
-    summary["cost_usd"] = None if cost is None else round(cost, 6)
-    summary["cost_note"] = "tokens counted for every call including cache hits (as if paid); " + (
-        f"no price configured for: {', '.join(missing)}"
-        if missing
-        else "priced from config/pricing.yaml"
-    )
+    summary["model_usage"] = model_usage(scored)
+    summary["tokens_note"] = "tokens counted for every call including cache hits (as if uncached)"
 
     lat = [float(r["latency_s"]) for r in scored if r["latency_s"] is not None]
     summary["latency_s"] = {
