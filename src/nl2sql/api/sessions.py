@@ -65,3 +65,46 @@ class InMemorySessionStore:
 
     def __len__(self) -> int:
         return len(self._data)
+
+
+def trim_turns(turns: list[dict[str, Any]], max_turns: int, max_bytes: int) -> list[dict[str, Any]]:
+    """Apply the max-turns / max-bytes policy (used by the Postgres backend)."""
+    turns = turns[-max_turns:] if max_turns > 0 else []
+    while len(turns) > 1 and _size(turns) > max_bytes:
+        turns.pop(0)
+    if turns and _size(turns) > max_bytes:
+        turns = []  # a single oversized turn is dropped, never stored
+    return turns
+
+
+def build_session_store(settings: Any) -> SessionStore:
+    """Select the backend from ``settings.session_backend`` (memory | postgres | redis)."""
+    backend = str(settings.session_backend).lower()
+    if backend == "memory":
+        return InMemorySessionStore(
+            settings.session_ttl_seconds,
+            settings.session_max_turns,
+            settings.session_max_bytes,
+            settings.session_max_sessions,
+        )
+    if backend == "postgres":
+        from nl2sql.api.sessions_pg import PostgresSessionStore
+
+        return PostgresSessionStore(
+            settings.session_database_url,
+            settings.session_ttl_seconds,
+            settings.session_max_turns,
+            settings.session_max_bytes,
+            pool_max_size=settings.session_pool_max_size,
+        )
+    if backend == "redis":
+        from nl2sql.api.sessions_redis import RedisSessionStore
+
+        return RedisSessionStore(
+            settings.session_redis_url,
+            settings.session_ttl_seconds,
+            settings.session_max_turns,
+            settings.session_max_bytes,
+            prefix=settings.session_redis_prefix,
+        )
+    raise ValueError(f"unknown session_backend {backend!r}; use memory, postgres or redis")
