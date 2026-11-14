@@ -195,7 +195,9 @@ async def test_int_statement_timeout() -> None:
         DSN, min_size=1, max_size=1, server_settings={"statement_timeout": "200"}
     )
     try:
-        r = await execute_sql(pool, "SELECT pg_sleep(5)")
+        r = await execute_sql(
+            pool, "SELECT count(*) FROM generate_series(1, 400000) a, generate_series(1, 4000) b"
+        )
         assert r.success is False and r.error is not None and "statement_timeout" in r.error
     finally:
         await pool.close()

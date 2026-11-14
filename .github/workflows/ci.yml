@@ -50,7 +50,7 @@ jobs:
       - name: Initialise database
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
-          for f in db/schema.sql db/seed_data.sql db/setup_role.sql db/audit.sql; do
+          for f in db/schema.sql db/seed_data.sql db/setup_role.sql db/audit.sql db/hardening.sql; do
             if [ -f "$f" ]; then echo "applying $f"; psql -v ON_ERROR_STOP=1 -f "$f"; fi
           done
       - name: Integration tests with coverage

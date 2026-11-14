@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from langgraph.graph.state import CompiledStateGraph
-from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+from prometheus_client import CONTENT_TYPE_LATEST
 from pydantic import BaseModel
 from starlette.types import ASGIApp, Receive, Scope, Send
 
@@ -28,7 +28,7 @@ from nl2sql.api.security import (
     auth_enabled,
     authenticate,
 )
-from nl2sql.api.sessions import InMemorySessionStore, SessionStore
+from nl2sql.api.sessions import SessionStore, build_session_store
 from nl2sql.api.spend import SpendGuard
 from nl2sql.audit.writer import AuditRecord, AuditWriter, hash_question
 from nl2sql.config import get_settings
@@ -150,9 +150,7 @@ def create_app(
 
     audit_writer = audit or AuditWriter()
     limiter: RateLimiter = rate_limiter or InMemoryTokenBucket()
-    store: SessionStore = sessions or InMemorySessionStore(
-        s.session_ttl_seconds, s.session_max_turns, s.session_max_bytes, s.session_max_sessions
-    )
+    store: SessionStore = sessions or build_session_store(s)
     spend = SpendGuard(sync=audit_writer.spent_today_usd)
 
     @asynccontextmanager
@@ -346,7 +344,7 @@ def create_app(
     async def metrics_endpoint() -> Response:
         if not get_settings().metrics_enabled:
             raise ApiError(404, "not_found", "Not found.")
-        return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+        return Response(metrics.render_metrics(), media_type=CONTENT_TYPE_LATEST)
 
     @app.post("/v1/query", response_model=QueryResponse)
     @app.post("/query", response_model=QueryResponse)

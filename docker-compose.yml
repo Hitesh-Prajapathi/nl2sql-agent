@@ -14,6 +14,7 @@ services:
       - ./db/seed_data.sql:/docker-entrypoint-initdb.d/02_seed.sql
       - ./db/setup_role.sql:/docker-entrypoint-initdb.d/03_role.sql
       - ./db/audit.sql:/docker-entrypoint-initdb.d/04_audit.sql
+      - ./db/hardening.sql:/docker-entrypoint-initdb.d/99_hardening.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d nl2sql_assignment"]
       interval: 5s
@@ -66,6 +67,20 @@ services:
     volumes:
       - ./src:/app/src
     command: uvicorn nl2sql.api.app:app --host 0.0.0.0 --port 8000 --reload
+
+  # Optional shared session store. Not started by default:
+  #   docker compose --profile redis up -d redis   (then SESSION_BACKEND=redis)
+  redis:
+    image: redis:7-alpine
+    container_name: nl2sql_redis
+    profiles: ["redis"]
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
 volumes:
   postgres_data:
