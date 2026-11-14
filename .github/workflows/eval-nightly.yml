@@ -1,0 +1,54 @@
+name: Eval nightly
+on:
+  schedule:
+    - cron: "0 3 * * 1"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: eval-nightly
+  cancel-in-progress: false
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/nl2sql_assignment
+      DATABASE_URL: postgresql://nl2sql_reader:reader_pass@localhost:5432/nl2sql_assignment
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: nl2sql_assignment
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d nl2sql_assignment"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - name: Check secret
+        run: '[ -n "$GROQ_API_KEY" ] || { echo "::error::GROQ_API_KEY is not set"; exit 1; }'
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: "3.11"
+      - run: uv sync --frozen --extra dev
+      - name: BIRD setup
+        # TODO: confirm CLI once harness lands
+        run: make bird-setup
+      - name: Full BIRD run
+        # TODO: confirm CLI once harness lands
+        run: uv run python -m nl2sql.eval.runner --variant full
+      - name: SQL red-team suite
+        # TODO: confirm CLI once harness lands (redteam/run_sql_suite.py)
+        run: uv run python redteam/run_sql_suite.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-nightly-results
+          path: results/
+          if-no-files-found: warn

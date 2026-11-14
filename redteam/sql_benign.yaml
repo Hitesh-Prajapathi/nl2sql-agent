@@ -1,0 +1,319 @@
+# Benign analytical SELECTs over the real schema (db/schema.sql).
+# Every one must pass validate_sql AND execute successfully as nl2sql_reader.
+- id: benign-001
+  feature: basic
+  sql: |-
+    SELECT * FROM customers
+- id: benign-002
+  feature: aggregate
+  sql: |-
+    SELECT status, count(*) AS n FROM orders GROUP BY status ORDER BY n DESC
+- id: benign-003
+  feature: join
+  sql: |-
+    SELECT c.name, sum(o.total_amount) AS spend
+    FROM customers c JOIN orders o ON o.customer_id = c.customer_id
+    GROUP BY c.name ORDER BY spend DESC LIMIT 10
+- id: benign-004
+  feature: cte
+  sql: |-
+    WITH delivered AS (SELECT * FROM orders WHERE status = 'delivered')
+    SELECT count(*) FROM delivered
+- id: benign-005
+  feature: cte_multi
+  sql: |-
+    WITH paid AS (SELECT order_id, sum(amount) AS paid FROM payments WHERE status = 'completed' GROUP BY order_id),
+         refunded AS (SELECT p.order_id, sum(r.amount) AS refunded FROM refunds r JOIN payments p ON p.payment_id = r.payment_id GROUP BY p.order_id)
+    SELECT o.order_id, COALESCE(paid.paid, 0) - COALESCE(refunded.refunded, 0) AS net
+    FROM orders o LEFT JOIN paid ON paid.order_id = o.order_id LEFT JOIN refunded ON refunded.order_id = o.order_id
+- id: benign-006
+  feature: cte_recursive
+  sql: |-
+    WITH RECURSIVE n AS (SELECT 1 AS i UNION ALL SELECT i + 1 FROM n WHERE i < 5)
+    SELECT i FROM n
+- id: benign-007
+  feature: window_rank
+  sql: |-
+    SELECT customer_id, total_amount, RANK() OVER (ORDER BY total_amount DESC) AS rnk FROM orders
+- id: benign-008
+  feature: window_row_number
+  sql: |-
+    SELECT * FROM (
+      SELECT o.*, ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY order_date DESC) AS rn FROM orders o
+    ) t WHERE rn = 1
+- id: benign-009
+  feature: window_dense_rank
+  sql: |-
+    SELECT category, name, unit_price, DENSE_RANK() OVER (PARTITION BY category ORDER BY unit_price DESC) AS dr FROM products
+- id: benign-010
+  feature: window_lag
+  sql: |-
+    SELECT order_id, order_date, total_amount, LAG(total_amount) OVER (PARTITION BY customer_id ORDER BY order_date) AS prev_amount FROM orders
+- id: benign-011
+  feature: window_lead
+  sql: |-
+    SELECT order_id, LEAD(order_date, 1) OVER (ORDER BY order_date) AS next_date FROM orders
+- id: benign-012
+  feature: window_running_sum
+  sql: |-
+    SELECT order_date, total_amount, SUM(total_amount) OVER (ORDER BY order_date, order_id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS running FROM orders
+- id: benign-013
+  feature: window_ntile
+  sql: |-
+    SELECT customer_id, NTILE(4) OVER (ORDER BY total_amount) AS quartile FROM orders
+- id: benign-014
+  feature: window_first_last
+  sql: |-
+    SELECT DISTINCT customer_id, FIRST_VALUE(total_amount) OVER (PARTITION BY customer_id ORDER BY order_date) AS first_amt,
+           LAST_VALUE(total_amount) OVER (PARTITION BY customer_id ORDER BY order_date ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS last_amt
+    FROM orders
+- id: benign-015
+  feature: case
+  sql: |-
+    SELECT order_id, CASE WHEN total_amount >= 1000 THEN 'high' WHEN total_amount >= 300 THEN 'mid' ELSE 'low' END AS band FROM orders
+- id: benign-016
+  feature: cast
+  sql: |-
+    SELECT CAST(total_amount AS integer) AS amt_int, total_amount::text AS amt_text FROM orders
+- id: benign-017
+  feature: cast_numeric
+  sql: |-
+    SELECT order_id, (total_amount::numeric / 100)::numeric(10,2) AS hundreds FROM orders
+- id: benign-018
+  feature: round
+  sql: |-
+    SELECT ROUND(AVG(total_amount), 2) AS avg_amt, ROUND(SUM(total_amount)::numeric, 1) AS s FROM orders
+- id: benign-019
+  feature: coalesce
+  sql: |-
+    SELECT ticket_id, COALESCE(order_id, 0) AS oid FROM support_tickets
+- id: benign-020
+  feature: nullif
+  sql: |-
+    SELECT payment_id, amount / NULLIF(amount, 0) AS ratio FROM payments
+- id: benign-021
+  feature: extract
+  sql: |-
+    SELECT EXTRACT(YEAR FROM order_date) AS yr, EXTRACT(MONTH FROM order_date) AS mo, count(*) FROM orders GROUP BY 1, 2 ORDER BY 1, 2
+- id: benign-022
+  feature: date_trunc
+  sql: |-
+    SELECT DATE_TRUNC('month', order_date) AS month, SUM(total_amount) AS revenue FROM orders GROUP BY 1 ORDER BY 1
+- id: benign-023
+  feature: date_trunc_week
+  sql: |-
+    SELECT date_trunc('week', created_date)::date AS wk, count(*) FROM support_tickets GROUP BY 1 ORDER BY 1
+- id: benign-024
+  feature: date_arith
+  sql: |-
+    SELECT order_id, order_date + INTERVAL '7 days' AS due FROM orders
+- id: benign-025
+  feature: date_diff
+  sql: |-
+    SELECT order_id, CURRENT_DATE - order_date AS age_days FROM orders
+- id: benign-026
+  feature: age
+  sql: |-
+    SELECT customer_id, AGE(CURRENT_DATE, signup_date) AS tenure FROM customers
+- id: benign-027
+  feature: to_char
+  sql: |-
+    SELECT TO_CHAR(order_date, 'YYYY-MM') AS ym, count(*) FROM orders GROUP BY 1 ORDER BY 1
+- id: benign-028
+  feature: now
+  sql: |-
+    SELECT count(*) FROM orders WHERE order_date < NOW()
+- id: benign-029
+  feature: string_funcs
+  sql: |-
+    SELECT UPPER(name) AS u, LOWER(email) AS e, LENGTH(name) AS len, TRIM(city) AS c FROM customers
+- id: benign-030
+  feature: substring
+  sql: |-
+    SELECT SUBSTRING(email FROM 1 FOR 5) AS pre, LEFT(name, 3) AS l, RIGHT(name, 3) AS r FROM customers
+- id: benign-031
+  feature: concat
+  sql: |-
+    SELECT name || ' (' || COALESCE(city, 'n/a') || ')' AS label, CONCAT(name, '-', tier) AS c2 FROM customers
+- id: benign-032
+  feature: replace_split
+  sql: |-
+    SELECT REPLACE(email, '@', ' at ') AS e, SPLIT_PART(email, '@', 2) AS domain FROM customers
+- id: benign-033
+  feature: ilike
+  sql: |-
+    SELECT * FROM products WHERE name ILIKE '%phone%'
+- id: benign-034
+  feature: like_regex
+  sql: |-
+    SELECT * FROM customers WHERE email LIKE '%@gmail.com' OR name ~ '^A'
+- id: benign-035
+  feature: in_between
+  sql: |-
+    SELECT * FROM orders WHERE status IN ('placed', 'shipped') AND total_amount BETWEEN 100 AND 5000
+- id: benign-036
+  feature: scalar_subquery
+  sql: |-
+    SELECT name, (SELECT count(*) FROM orders o WHERE o.customer_id = c.customer_id) AS n_orders FROM customers c
+- id: benign-037
+  feature: exists
+  sql: |-
+    SELECT name FROM customers c WHERE EXISTS (SELECT 1 FROM orders o WHERE o.customer_id = c.customer_id AND o.status = 'cancelled')
+- id: benign-038
+  feature: not_in
+  sql: |-
+    SELECT customer_id, name FROM customers WHERE customer_id NOT IN (SELECT customer_id FROM orders)
+- id: benign-039
+  feature: derived_table
+  sql: |-
+    SELECT t.city, t.n FROM (SELECT city, count(*) AS n FROM customers GROUP BY city) t WHERE t.n > 1
+- id: benign-040
+  feature: union
+  sql: |-
+    SELECT name AS label FROM customers UNION SELECT name FROM products ORDER BY 1
+- id: benign-041
+  feature: union_all
+  sql: |-
+    SELECT 'orders' AS src, count(*) FROM orders UNION ALL SELECT 'payments', count(*) FROM payments UNION ALL SELECT 'refunds', count(*) FROM refunds
+- id: benign-042
+  feature: intersect_except
+  sql: |-
+    SELECT customer_id FROM orders INTERSECT SELECT customer_id FROM support_tickets
+- id: benign-043
+  feature: except
+  sql: |-
+    SELECT customer_id FROM customers EXCEPT SELECT customer_id FROM orders
+- id: benign-044
+  feature: rollup
+  sql: |-
+    SELECT category, name, SUM(unit_price) FROM products GROUP BY ROLLUP (category, name)
+- id: benign-045
+  feature: cube_grouping_sets
+  sql: |-
+    SELECT status, shipping_city, count(*) FROM orders GROUP BY GROUPING SETS ((status), (shipping_city), ())
+- id: benign-046
+  feature: distinct_on
+  sql: |-
+    SELECT DISTINCT ON (customer_id) customer_id, order_id, order_date FROM orders ORDER BY customer_id, order_date DESC
+- id: benign-047
+  feature: filter
+  sql: |-
+    SELECT COUNT(*) FILTER (WHERE status = 'delivered') AS delivered, COUNT(*) FILTER (WHERE status = 'cancelled') AS cancelled FROM orders
+- id: benign-048
+  feature: string_agg
+  sql: |-
+    SELECT c.name, STRING_AGG(DISTINCT o.status, ', ' ORDER BY o.status) AS statuses FROM customers c JOIN orders o USING (customer_id) GROUP BY c.name
+- id: benign-049
+  feature: array_agg
+  sql: |-
+    SELECT customer_id, ARRAY_AGG(order_id ORDER BY order_date) AS order_ids FROM orders GROUP BY customer_id
+- id: benign-050
+  feature: having
+  sql: |-
+    SELECT customer_id, count(*) AS n FROM orders GROUP BY customer_id HAVING count(*) >= 2
+- id: benign-051
+  feature: left_join_null
+  sql: |-
+    SELECT o.order_id FROM orders o LEFT JOIN payments p ON p.order_id = o.order_id WHERE p.payment_id IS NULL
+- id: benign-052
+  feature: multi_join
+  sql: |-
+    SELECT c.name, p.name AS product, oi.quantity
+    FROM order_items oi JOIN orders o ON o.order_id = oi.order_id
+    JOIN customers c ON c.customer_id = o.customer_id
+    JOIN products p ON p.product_id = oi.product_id
+    ORDER BY oi.quantity DESC LIMIT 20
+- id: benign-053
+  feature: self_join_agents
+  sql: |-
+    SELECT a.team, count(t.ticket_id) AS tickets FROM agents a LEFT JOIN support_tickets t ON t.agent_id = a.agent_id GROUP BY a.team
+- id: benign-054
+  feature: line_total
+  sql: |-
+    SELECT order_id, SUM(quantity * unit_price) AS items_total FROM order_items GROUP BY order_id
+- id: benign-055
+  feature: stddev_agg
+  sql: |-
+    SELECT method, MIN(amount), MAX(amount), AVG(amount), STDDEV(amount) FROM payments GROUP BY method
+- id: benign-056
+  feature: percentile
+  sql: |-
+    SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY total_amount) AS median FROM orders
+- id: benign-057
+  feature: math
+  sql: |-
+    SELECT ABS(amount - 100) AS d, CEIL(amount) AS c, FLOOR(amount) AS f, POWER(amount, 2) AS p, SQRT(amount) AS s, MOD(payment_id, 2) AS m FROM payments
+- id: benign-058
+  feature: greatest_least
+  sql: |-
+    SELECT GREATEST(total_amount, 500) AS g, LEAST(total_amount, 500) AS l FROM orders
+- id: benign-059
+  feature: boolean_agg
+  sql: |-
+    SELECT customer_id, BOOL_OR(status = 'cancelled') AS any_cancel FROM orders GROUP BY customer_id
+- id: benign-060
+  feature: count_distinct
+  sql: |-
+    SELECT COUNT(DISTINCT customer_id) AS buyers, COUNT(DISTINCT shipping_city) AS cities FROM orders
+- id: benign-061
+  feature: values_list
+  sql: |-
+    SELECT * FROM (VALUES ('Gold'), ('Silver'), ('Basic')) AS t(tier)
+- id: benign-062
+  feature: lateral
+  sql: |-
+    SELECT c.name, x.last_order FROM customers c
+    LEFT JOIN LATERAL (SELECT MAX(order_date) AS last_order FROM orders o WHERE o.customer_id = c.customer_id) x ON true
+- id: benign-063
+  feature: generate_series_dates
+  sql: |-
+    SELECT d::date FROM generate_series('2024-01-01'::date, '2024-01-10'::date, INTERVAL '1 day') AS d
+- id: benign-064
+  feature: generate_series_ints
+  sql: |-
+    SELECT g FROM generate_series(1, 10) AS g
+- id: benign-065
+  feature: order_by_nulls
+  sql: |-
+    SELECT ticket_id, agent_id FROM support_tickets ORDER BY agent_id DESC NULLS LAST LIMIT 5
+- id: benign-066
+  feature: offset_fetch
+  sql: |-
+    SELECT * FROM products ORDER BY unit_price DESC OFFSET 2 LIMIT 3
+- id: benign-067
+  feature: cumulative_share
+  sql: |-
+    SELECT category, SUM(unit_price) AS tot, ROUND(100.0 * SUM(unit_price) / SUM(SUM(unit_price)) OVER (), 1) AS pct FROM products GROUP BY category
+- id: benign-068
+  feature: json_build
+  sql: |-
+    SELECT JSON_BUILD_OBJECT('id', customer_id, 'name', name) AS j FROM customers
+- id: benign-069
+  feature: json_agg
+  sql: |-
+    SELECT JSONB_AGG(name) AS names FROM customers
+- id: benign-070
+  feature: interval_extract
+  sql: |-
+    SELECT payment_id, EXTRACT(EPOCH FROM (payment_date::timestamp - TIMESTAMP '2024-01-01')) / 86400 AS days FROM payments
+- id: benign-071
+  feature: refund_rate
+  sql: |-
+    SELECT p.method, ROUND(100.0 * COALESCE(SUM(r.amount), 0) / NULLIF(SUM(p.amount), 0), 2) AS refund_pct
+    FROM payments p LEFT JOIN refunds r ON r.payment_id = p.payment_id WHERE p.status IN ('completed', 'refunded') GROUP BY p.method
+- id: benign-072
+  feature: trailing_semicolon
+  sql: |-
+    SELECT count(*) FROM orders WHERE true;
+- id: benign-073
+  feature: string_literals_with_keywords
+  sql: |-
+    SELECT * FROM support_tickets WHERE category = 'billing' AND status <> 'closed'
+- id: benign-074
+  feature: text_with_semicolon_in_literal
+  sql: |-
+    SELECT 'drop table; delete from orders' AS harmless, count(*) FROM agents
+- id: benign-075
+  feature: row_to_json_like
+  sql: |-
+    SELECT TO_JSON(c) AS j FROM (SELECT customer_id, name FROM customers LIMIT 3) c
