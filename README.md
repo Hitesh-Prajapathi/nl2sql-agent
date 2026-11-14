@@ -58,13 +58,16 @@ make test-e2e      # graph end-to-end tests
 
 - `make bench` runs `benchmarks/run_latency.py` against a running API (`make dev` first). Results are written to `benchmarks/results/*.json`.
 - `make redteam-sql` runs the SQL red-team suite in `redteam/`.
+- `make eval VARIANT=full_small` runs the BIRD Mini-Dev evaluation (variants: `full`, `naive`, `full_small`, `naive_small`). The `*_small` variants cap prompt + output tokens at 6,500 per request for the Groq free tier (8,000 tokens/minute and 1,000 requests/day per model). The runner paces itself, stops cleanly when the daily budget is used up, and resumes from `results/bird_minidev_<variant>.jsonl` when the same command is rerun. `make prompt-size VARIANT=full_small` checks the cap offline for all 500 questions.
 - `benchmarks/golden_set.py` is a data module of test cases. It is not a runnable script.
 
 ## Results
 
-Benchmarks in progress; see docs/REFINEMENT_EXECUTION_PLAN.md
+Benchmarks in progress; see docs/REFINEMENT_EXECUTION_PLAN.md. The tables below are generated
+by `make report` from complete (500-question) runs only.
 
 <!-- RESULTS:START -->
+_No complete BIRD Mini-Dev run has been recorded yet. Run `make eval`._
 <!-- RESULTS:END -->
 
 ## Development

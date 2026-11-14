@@ -33,6 +33,7 @@ from nl2sql.api.spend import SpendGuard
 from nl2sql.audit.writer import AuditRecord, AuditWriter, hash_question
 from nl2sql.config import get_settings
 from nl2sql.db.connection import close_pool, get_pool
+from nl2sql.db.registry import DatabaseRegistry
 from nl2sql.llm.providers import LLMUnavailableError
 from nl2sql.telemetry import metrics
 from nl2sql.telemetry.setup import flush_langfuse, get_langfuse_handler
@@ -53,6 +54,8 @@ Graph = CompiledStateGraph[AgentState, Any, AgentState, AgentState]
 class QueryRequest(BaseModel):
     question: str
     thread_id: str | None = None
+    # db_id of a registered database; omitted = the default database. Unknown = status=failed.
+    database: str | None = None
 
 
 class QueryResponse(BaseModel):
@@ -68,7 +71,6 @@ class QueryResponse(BaseModel):
     request_id: str | None = None
     input_tokens: int | None = None
     output_tokens: int | None = None
-    cost_usd: float | None = None  # None when token usage or prices are unavailable
 
 
 class RequestIdMiddleware:
@@ -142,7 +144,7 @@ def create_app(
     setup_tracing()
 
     async def _default_graph() -> Graph:
-        return build_graph(await get_pool())
+        return build_graph(registry=DatabaseRegistry.from_default())
 
     async def _default_ready() -> None:
         pool = await get_pool()
@@ -151,7 +153,7 @@ def create_app(
     audit_writer = audit or AuditWriter()
     limiter: RateLimiter = rate_limiter or InMemoryTokenBucket()
     store: SessionStore = sessions or build_session_store(s)
-    spend = SpendGuard(sync=audit_writer.spent_today_usd)
+    spend = SpendGuard()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -258,6 +260,7 @@ def create_app(
                     runner,
                     question,
                     thread_id=thread_id,
+                    db_id=(req.database or "").strip(),
                     conversation_history=history,
                     callbacks=callbacks,
                 )
@@ -275,10 +278,6 @@ def create_app(
             layer = _blocked_layer(state)
             if layer:
                 metrics.BLOCKS.labels(layer).inc()
-            cost = observer.cost_usd
-            if cost:
-                metrics.COST.inc(cost)
-                spend.record(cost)
             await audit_writer.write(
                 AuditRecord(
                     request_id=rid,
@@ -289,7 +288,6 @@ def create_app(
                     blocked_layer=layer,
                     row_count=state.get("exec_row_count") if state else None,
                     latency_ms=round(latency * 1000, 2),
-                    cost_usd=cost,
                     trace_id=trace_id or state.get("trace_id") or None,
                 )
             )
@@ -317,7 +315,6 @@ def create_app(
             request_id=rid,
             input_tokens=observer.input_tokens if observer.has_usage else None,
             output_tokens=observer.output_tokens if observer.has_usage else None,
-            cost_usd=cost,
         )
 
     # ── routes ────────────────────────────────────────────────────────────────

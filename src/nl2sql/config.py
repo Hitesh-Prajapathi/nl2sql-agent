@@ -32,9 +32,17 @@ class Settings(BaseSettings):
     fake_llm_latency_ms: float = Field(default=0.0)
 
     # ── Models ────────────────────────────────────────────────────────────────
-    planner_model: str = Field(default="llama-3.3-70b-versatile")
-    fast_model: str = Field(default="llama-3.1-8b-instant")
-    fallback_model: str = Field(default="llama-4-scout-17b")
+    # Groq free tier on this key: every model is limited to 1,000 requests/day and 8,000
+    # tokens/minute (see the eval pacer in nl2sql.eval.pacer).
+    planner_model: str = Field(default="openai/gpt-oss-120b")
+    fast_model: str = Field(default="openai/gpt-oss-20b")
+    fallback_model: str = Field(default="openai/gpt-oss-20b")
+    # Reasoning effort for gpt-oss models (low | medium | high). Reasoning tokens count against
+    # the output token cap, so "low" keeps the JSON answer from being truncated.
+    llm_reasoning_effort: str = Field(default="low")
+    # Output token caps per call. They are reserved against the per-minute token limit.
+    planner_max_tokens: int = Field(default=2048)
+    fast_max_tokens: int = Field(default=1024)
 
     # ── Langfuse ─────────────────────────────────────────────────────────────
     langfuse_public_key: str = Field(default="")
@@ -87,14 +95,18 @@ class Settings(BaseSettings):
     llm_max_retries: int = Field(default=3)
     llm_backoff_base_seconds: float = Field(default=0.5)
     llm_backoff_max_seconds: float = Field(default=8.0)
-    llm_max_concurrency: int = Field(default=8)
+    llm_max_concurrency: int = Field(default=32)
     llm_breaker_failure_threshold: int = Field(default=5)
     llm_breaker_reset_seconds: float = Field(default=30.0)
 
-    # ── Cost controls (prices are USD per 1M tokens; unset = cost unknown) ───
-    price_input_per_1m_usd: float | None = Field(default=None)
-    price_output_per_1m_usd: float | None = Field(default=None)
-    daily_spend_cap_usd: float | None = Field(default=None)
+    # ── Rate-limit pacing (Groq free tier: per model) ─────────────────────────
+    # Client-side token bucket + daily request budget, applied when LLM_PROVIDER=groq.
+    # Turn it off (LLM_PACING_ENABLED=false) on a paid tier.
+    llm_pacing_enabled: bool = Field(default=True)
+    llm_tpm_limit: int = Field(default=8000)
+    llm_rpd_limit: int = Field(default=1000)
+
+    # ── Kill switch ───────────────────────────────────────────────────────────
     llm_kill_switch: bool = Field(default=False)
 
     # ── Audit log (separate small pool, role audit_writer) ───────────────────

@@ -37,7 +37,6 @@ class AuditRecord:
     blocked_layer: str | None
     row_count: int | None
     latency_ms: float
-    cost_usd: float | None
     trace_id: str | None
 
 
@@ -72,8 +71,8 @@ class AuditWriter:
                 return False
             await pool.execute(
                 "INSERT INTO audit.query_log (request_id, key_id, question_hash, sql_text,"
-                " status, blocked_layer, row_count, latency_ms, cost_usd, trace_id)"
-                " VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
+                " status, blocked_layer, row_count, latency_ms, trace_id)"
+                " VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)",
                 rec.request_id,
                 rec.key_id,
                 rec.question_hash,
@@ -82,7 +81,6 @@ class AuditWriter:
                 rec.blocked_layer,
                 rec.row_count,
                 rec.latency_ms,
-                rec.cost_usd,
                 rec.trace_id,
             )
             return True
@@ -91,20 +89,6 @@ class AuditWriter:
             self._down_until = time.monotonic() + _RETRY_AFTER_FAILURE_S
             log.warning("audit_write_failed", error_type=type(exc).__name__)
             return False
-
-    async def spent_today_usd(self) -> float | None:
-        """Sum of today's cost across all workers (None if unavailable)."""
-        try:
-            pool = await asyncio.wait_for(self._get_pool(), timeout=_WRITE_TIMEOUT_S + 1)
-            if pool is None:
-                return None
-            val = await pool.fetchval(
-                "SELECT COALESCE(SUM(cost_usd), 0) FROM audit.query_log"
-                " WHERE ts >= date_trunc('day', now())"
-            )
-            return float(val)
-        except Exception:
-            return None
 
     async def close(self) -> None:
         if self._pool is not None:
