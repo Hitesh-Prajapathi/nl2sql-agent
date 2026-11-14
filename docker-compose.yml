@@ -14,6 +14,7 @@ services:
       - ./db/seed_data.sql:/docker-entrypoint-initdb.d/02_seed.sql
       - ./db/setup_role.sql:/docker-entrypoint-initdb.d/03_role.sql
       - ./db/audit.sql:/docker-entrypoint-initdb.d/04_audit.sql
+      - ./db/hardening.sql:/docker-entrypoint-initdb.d/99_hardening.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d nl2sql_assignment"]
       interval: 5s

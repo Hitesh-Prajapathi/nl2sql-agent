@@ -1,4 +1,4 @@
-.PHONY: setup docker-up docker-down docker-logs dev cli ask test test-unit test-safety test-e2e bench redteam-sql lint fmt check logs
+.PHONY: db-harden setup docker-up docker-down docker-logs dev cli ask test test-unit test-safety test-e2e bench redteam-sql lint fmt check logs
 
 # ── Setup ─────────────────────────────────────────────────────────────────────
 setup:
@@ -53,6 +53,10 @@ bench:
 
 redteam-sql:
 	uv run python redteam/run_sql_suite.py
+
+# Apply db/hardening.sql (REVOKE EXECUTE on dangerous built-ins, catalog lockdown) as superuser.
+db-harden:
+	./scripts/apply_db_hardening.sh
 
 # ── Code Quality ──────────────────────────────────────────────────────────────
 lint:
