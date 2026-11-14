@@ -96,6 +96,20 @@ class Settings(BaseSettings):
     otel_service_name: str = Field(default="nl2sql-agent")
     metrics_enabled: bool = Field(default=True)
 
+    # ── Shared session store (multi-worker) ───────────────────────────────────
+    # memory (per process, default) | postgres | redis. Use postgres or redis with
+    # more than one uvicorn worker, otherwise follow-ups can land on a worker that
+    # has no history for the thread.
+    session_backend: str = Field(default="memory")
+    # Postgres backend: role app_state_writer over its own small pool (db/app_state.sql).
+    session_database_url: str = Field(
+        default="postgresql://app_state_writer:app_state_pass@localhost:5432/nl2sql_assignment"
+    )
+    session_pool_max_size: int = Field(default=3)
+    # Redis backend (needs the `redis` extra: uv sync --extra redis).
+    session_redis_url: str = Field(default="redis://localhost:6379/0")
+    session_redis_prefix: str = Field(default="nl2sql:session:")
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -67,3 +67,11 @@ check: lint
 # ── Convenience ───────────────────────────────────────────────────────────────
 logs:
 	tail -f nl2sql.log 2>/dev/null || echo "No log file found."
+
+# ── Multi-worker (shared sessions + multiprocess metrics) ─────────────────────
+# One-time: psql -U postgres -d nl2sql_assignment -f db/app_state.sql
+.PHONY: dev-multi
+dev-multi:
+	rm -rf /tmp/nl2sql_prom && mkdir -p /tmp/nl2sql_prom
+	SESSION_BACKEND=postgres PROMETHEUS_MULTIPROC_DIR=/tmp/nl2sql_prom \
+		uv run uvicorn nl2sql.api.app:app --port 8000 --workers 4
