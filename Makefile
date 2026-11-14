@@ -1,4 +1,4 @@
-.PHONY: bird-setup profile eval report setup docker-up docker-down docker-logs dev cli ask test test-unit test-safety test-e2e bench redteam-sql lint fmt check logs
+.PHONY: bird-setup profile eval report db-harden setup docker-up docker-down docker-logs dev cli ask test test-unit test-safety test-e2e bench redteam-sql lint fmt check logs
 
 # ── Setup ─────────────────────────────────────────────────────────────────────
 setup:
@@ -54,6 +54,10 @@ bench:
 redteam-sql:
 	uv run python redteam/run_sql_suite.py
 
+# Apply db/hardening.sql (REVOKE EXECUTE on dangerous built-ins, catalog lockdown) as superuser.
+db-harden:
+	./scripts/apply_db_hardening.sh
+
 # ── Code Quality ──────────────────────────────────────────────────────────────
 lint:
 	uv run ruff check src/ tests/
@@ -85,3 +89,11 @@ eval:
 
 report:
 	uv run python scripts/report.py
+
+# ── Multi-worker (shared sessions + multiprocess metrics) ─────────────────────
+# One-time: psql -U postgres -d nl2sql_assignment -f db/app_state.sql
+.PHONY: dev-multi
+dev-multi:
+	rm -rf /tmp/nl2sql_prom && mkdir -p /tmp/nl2sql_prom
+	SESSION_BACKEND=postgres PROMETHEUS_MULTIPROC_DIR=/tmp/nl2sql_prom \
+		uv run uvicorn nl2sql.api.app:app --port 8000 --workers 4
