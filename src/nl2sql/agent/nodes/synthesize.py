@@ -8,8 +8,8 @@ import structlog
 from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
 
-from nl2sql.agent.state import AgentState
 from nl2sql.agent.llm import fast_llm
+from nl2sql.agent.state import AgentState
 
 log = structlog.get_logger()
 

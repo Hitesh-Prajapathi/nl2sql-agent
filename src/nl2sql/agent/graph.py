@@ -187,9 +187,7 @@ def build_graph(
 
     # ── Entry point ───────────────────────────────────────────────────────────
     builder.set_entry_point("load_schema")
-    builder.add_conditional_edges(
-        "load_schema", route_after_load, {"plan": "plan_sql", "end": END}
-    )
+    builder.add_conditional_edges("load_schema", route_after_load, {"plan": "plan_sql", "end": END})
 
     # plan_sql → clarify | refuse | validate_sql
     builder.add_conditional_edges(

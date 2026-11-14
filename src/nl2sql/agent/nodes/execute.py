@@ -12,8 +12,8 @@ from nl2sql.agent.state import AgentState, AttemptRecord
 from nl2sql.config import get_settings
 from nl2sql.db.executor import execute_sql
 from nl2sql.db.registry import DatabaseRegistry
-from nl2sql.models import ExecutionResult
 from nl2sql.llm.prompts.plan_sql import CORRECTION_SYSTEM
+from nl2sql.models import ExecutionResult
 from nl2sql.safety.validator import validate_sql
 
 log = structlog.get_logger()

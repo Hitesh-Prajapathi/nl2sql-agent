@@ -27,6 +27,8 @@ PROFILE_FORMAT_VERSION = 1
 LOW_CARDINALITY_THRESHOLD = 30
 # How many sample rows to show per table (before budget degradation).
 SAMPLE_ROWS = 3
+# Max non-exhaustive common values listed per column.
+MAX_COMMON_VALUES = 8
 # Max characters of any single sample / common value shown to the model.
 MAX_VALUE_CHARS = 60
 # Default per-table budget in (approximate) tokens for the rendered table block.
@@ -46,11 +48,17 @@ def estimate_tokens(text: str) -> int:
 
 def sanitize_value(value: Any, max_chars: int = MAX_VALUE_CHARS) -> str:
     """Render a data value for a prompt: single line, control chars removed, truncated."""
-    text = value if isinstance(value, str) else json.dumps(value, default=str, ensure_ascii=False)
-    text = _CTRL.sub(" ", str(text)).strip()
+    text = _CTRL.sub(" ", str(value)).strip()
     if len(text) > max_chars:
         text = text[: max_chars - 3] + "..."
     return text
+
+
+def sample_value(value: Any) -> Any:
+    """Sample-row cell: numbers/bools/None stay native JSON, everything else is a clean string."""
+    if value is None or isinstance(value, bool | int | float):
+        return value
+    return sanitize_value(value)
 
 
 def quote_ident(name: str) -> str:
@@ -114,9 +122,7 @@ async def build_profile_data(
         schema = await resolve_schema(conn)
         if profile is None:
             db_name = await conn.fetchval("SELECT current_database()")
-            profile = DatabaseProfile.from_db_name(
-                schema if schema != "public" else str(db_name)
-            )
+            profile = DatabaseProfile.from_db_name(schema if schema != "public" else str(db_name))
         profile.date_ranges.clear()
         tables: list[dict[str, Any]] = []
         for trow in await _get_tables(conn, schema):
@@ -192,7 +198,7 @@ async def _profile_table(
         "primary_key": await _get_primary_key(conn, oid),
         "foreign_keys": await _get_foreign_keys(conn, oid),
         "checks": await _get_check_constraints(conn, oid),
-        "samples": [{k: sanitize_value(v) for k, v in dict(r).items()} for r in samples],
+        "samples": [{k: sample_value(v) for k, v in dict(r).items()} for r in samples],
     }
 
 
@@ -249,10 +255,12 @@ def render_table(
         out.append(line)
         values = col.get("values")
         if values and max_values > 0:
-            shown = values[:max_values]
-            label = "Distinct values" if col.get("values_complete") else "Common values"
-            more = "" if col.get("values_complete") else f" (of ~{col.get('n_distinct', '?')})"
-            if col.get("values_complete") and len(shown) < len(values):
+            complete = bool(col.get("values_complete"))
+            # Non-exhaustive "common values" are only a hint: cap them harder than full lists.
+            shown = values[: max_values if complete else min(max_values, MAX_COMMON_VALUES)]
+            if complete and len(shown) == len(values):
+                label, more = "Distinct values", ""
+            else:
                 label, more = "Common values", f" (of ~{col.get('n_distinct', '?')})"
             out.append(f"      {label}{more}: {shown}")
         if ranges and col.get("range"):
@@ -329,7 +337,9 @@ async def _get_columns(conn: asyncpg.Connection, table_oid: int) -> list[dict[st
     return [dict(r) for r in rows]
 
 
-async def _get_stats(conn: asyncpg.Connection, schema: str, table: str) -> dict[str, dict[str, Any]]:
+async def _get_stats(
+    conn: asyncpg.Connection, schema: str, table: str
+) -> dict[str, dict[str, Any]]:
     try:
         rows = await conn.fetch(
             """

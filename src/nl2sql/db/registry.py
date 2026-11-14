@@ -145,6 +145,7 @@ class DatabaseRegistry:
         statement_timeout_ms: int | None = None,
         max_size: int | None = None,
         url_template: str | None = None,
+        use_stored_profiles: bool = True,
     ) -> DatabaseRegistry:
         s = get_settings()
         template = url_template or s.bird_database_url_template
@@ -157,6 +158,7 @@ class DatabaseRegistry:
                 max_size=max_size,
                 statement_timeout_ms=statement_timeout_ms or s.eval_statement_timeout_ms,
                 profile_dir=profile_dir,
+                use_stored_profile=use_stored_profiles,
             )
         return reg
 

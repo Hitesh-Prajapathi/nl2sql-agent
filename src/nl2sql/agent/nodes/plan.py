@@ -8,8 +8,8 @@ import structlog
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
 
-from nl2sql.agent.state import AgentState
 from nl2sql.agent.llm import planner_llm
+from nl2sql.agent.state import AgentState
 from nl2sql.db.registry import DatabaseRegistry, UnknownDatabaseError
 from nl2sql.llm.prompts.plan_sql import HINT_TEMPLATE, PLAN_SQL_SYSTEM
 from nl2sql.models import PlanResult

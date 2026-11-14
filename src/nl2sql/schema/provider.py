@@ -50,7 +50,9 @@ class FullSchemaProvider(SchemaProvider):
                 # schema-per-database layouts name the database by its (pinned) schema
                 schema = await resolve_schema(conn)
                 db_name = (
-                    await conn.fetchval("SELECT current_database()") if schema == "public" else schema
+                    await conn.fetchval("SELECT current_database()")
+                    if schema == "public"
+                    else schema
                 )
             self._profile = DatabaseProfile.from_db_name(db_name)
         context = await introspect_schema(
