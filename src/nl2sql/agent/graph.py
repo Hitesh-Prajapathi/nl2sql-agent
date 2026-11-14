@@ -20,13 +20,19 @@ from nl2sql.agent.nodes.plan import load_schema_node, plan_sql_node
 from nl2sql.agent.nodes.synthesize import synthesize_node
 from nl2sql.agent.state import AgentState
 from nl2sql.config import get_settings
-from nl2sql.schema.provider import FullSchemaProvider, SchemaProvider
+from nl2sql.db.registry import DatabaseRegistry
+from nl2sql.schema.provider import SchemaProvider
 
 log = structlog.get_logger()
 settings = get_settings()
 
 
 # ── Routing functions ─────────────────────────────────────────────────────────
+
+
+def route_after_load(state: AgentState) -> str:
+    """An unknown database terminates the run (status=failed) before any LLM call."""
+    return "end" if state.get("status") == "failed" else "plan"
 
 
 def route_after_plan(state: AgentState) -> str:
@@ -135,8 +141,10 @@ def max_retries_node(state: AgentState) -> dict[str, Any]:
 
 
 def build_graph(
-    pool: asyncpg.Pool | None,
+    pool: asyncpg.Pool | None = None,
     schema_provider: SchemaProvider | None = None,
+    *,
+    registry: DatabaseRegistry | None = None,
 ) -> CompiledStateGraph[AgentState, Any, AgentState, AgentState]:
     """
     Build and compile the NL-to-SQL LangGraph.
@@ -149,16 +157,21 @@ def build_graph(
                             max_retries → END (status=failed); synthesize → END
 
     synthesize is reachable ONLY after a successful execute.
+
+    Resources are looked up per request: the state's ``db_id`` selects a (pool, schema provider,
+    profile) from the ``DatabaseRegistry``. Without a registry, the legacy single-database call
+    ``build_graph(pool[, schema_provider])`` is wrapped into a one-entry registry, so the
+    default database keeps working unchanged.
     """
-    if schema_provider is None:
-        schema_provider = FullSchemaProvider(pool)
+    if registry is None:
+        registry = DatabaseRegistry.from_single(pool, schema_provider)
 
     builder = StateGraph(AgentState)
 
     # ── Register nodes ────────────────────────────────────────────────────────
     builder.add_node(
         "load_schema",
-        functools.partial(load_schema_node, schema_provider=schema_provider),
+        functools.partial(load_schema_node, registry=registry),
     )
     builder.add_node("plan_sql", plan_sql_node)
     builder.add_node("clarify", clarify_node)
@@ -167,14 +180,16 @@ def build_graph(
     builder.add_node("max_retries", max_retries_node)
     builder.add_node(
         "execute_sql",
-        functools.partial(execute_sql_node, pool=pool),
+        functools.partial(execute_sql_node, registry=registry),
     )
     builder.add_node("correct_sql", correct_sql_node)
     builder.add_node("synthesize", synthesize_node)
 
     # ── Entry point ───────────────────────────────────────────────────────────
     builder.set_entry_point("load_schema")
-    builder.add_edge("load_schema", "plan_sql")
+    builder.add_conditional_edges(
+        "load_schema", route_after_load, {"plan": "plan_sql", "end": END}
+    )
 
     # plan_sql → clarify | refuse | validate_sql
     builder.add_conditional_edges(
@@ -227,6 +242,10 @@ async def run_query(
     messages: list[BaseMessage] | None = None,
     conversation_history: list[dict[str, Any]] | None = None,
     callbacks: list[BaseCallbackHandler] | None = None,
+    *,
+    db_id: str = "",
+    eval_mode: bool = False,
+    evidence: str = "",
 ) -> dict[str, Any]:
     """Invoke the graph and return the final state."""
     initial_state: AgentState = {
@@ -261,7 +280,10 @@ async def run_query(
         "trace_id": "",
         "timings": {},
         # Populated by load_schema_node from the schema provider's DatabaseProfile
-        "db_id": "",
+        "db_id": db_id,
+        "eval_mode": eval_mode,
+        "evidence": evidence,
+        "llm_error": "",
         "db_display_name": "",
         "data_date_ranges": {},
     }

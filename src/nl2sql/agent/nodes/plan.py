@@ -9,11 +9,11 @@ from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
 
 from nl2sql.agent.state import AgentState
-from nl2sql.llm.prompts.plan_sql import PLAN_SQL_SYSTEM
-from nl2sql.llm.providers import get_planner_llm
+from nl2sql.agent.llm import planner_llm
+from nl2sql.db.registry import DatabaseRegistry, UnknownDatabaseError
+from nl2sql.llm.prompts.plan_sql import HINT_TEMPLATE, PLAN_SQL_SYSTEM
 from nl2sql.models import PlanResult
 from nl2sql.safety.validator import detect_prompt_injection
-from nl2sql.schema.provider import SchemaProvider
 
 log = structlog.get_logger()
 
@@ -25,18 +25,29 @@ def refusal_text(db_display_name: str = "") -> str:
     return "I can only answer read-only data questions about the connected database."
 
 
-async def load_schema_node(state: AgentState, schema_provider: SchemaProvider) -> dict[str, Any]:
-    """Node 1: Load and cache the schema context."""
+async def load_schema_node(state: AgentState, registry: DatabaseRegistry) -> dict[str, Any]:
+    """Node 1: resolve the request's database in the registry and load its schema context."""
     t0 = time.perf_counter()
-    schema_context = await schema_provider.get_context(state.get("question", ""))
+    requested = state.get("db_id") or ""
+    try:
+        resources = await registry.get(requested or None)
+    except UnknownDatabaseError as exc:
+        msg = str(exc.args[0]) if exc.args else "Unknown database."
+        return {
+            "status": "failed",
+            "final_answer": f"**Request failed:** {msg}",
+            "final_sql": "",
+            "refuse_reason": msg,
+        }
+    schema_context = await resources.schema_provider.get_context(state.get("question", ""))
     elapsed_ms = round((time.perf_counter() - t0) * 1000)
     timings = dict(state.get("timings", {}))
     timings["load_schema_ms"] = elapsed_ms
-    log.info("load_schema_done", duration_ms=elapsed_ms)
-    profile = getattr(schema_provider, "profile", None)
+    log.info("load_schema_done", db_id=resources.db_id, duration_ms=elapsed_ms)
+    profile = resources.profile
     return {
         "schema_context": schema_context,
-        "db_id": profile.db_id if profile else "",
+        "db_id": resources.db_id,
         "db_display_name": profile.display_name if profile else "",
         "data_date_ranges": dict(profile.date_ranges) if profile else {},
         "trace_id": state.get("trace_id") or str(uuid.uuid4()),
@@ -75,12 +86,14 @@ async def plan_sql_node(state: AgentState, config: RunnableConfig) -> dict[str, 
     if history:
         followup_block = _build_history_block(history)
 
+    evidence = (state.get("evidence") or "").strip()
     system_prompt = PLAN_SQL_SYSTEM.format(
         schema_context=state["schema_context"],
+        hint_block=HINT_TEMPLATE.format(evidence=evidence) if evidence else "",
         followup_block=followup_block,
     )
 
-    llm = get_planner_llm().with_structured_output(PlanResult, method="json_mode")
+    llm = planner_llm().with_structured_output(PlanResult, method="json_mode")
 
     try:
         result = cast(
@@ -103,6 +116,7 @@ async def plan_sql_node(state: AgentState, config: RunnableConfig) -> dict[str, 
             "refuse_reason": f"LLM error: {exc}",
             "status": "failed",
             "final_answer": f"The language model returned an error: {exc}",
+            "llm_error": str(exc) or type(exc).__name__,
             "timings": timings,
         }
 

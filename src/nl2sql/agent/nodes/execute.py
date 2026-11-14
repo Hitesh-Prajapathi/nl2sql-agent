@@ -4,15 +4,16 @@ import time
 from enum import StrEnum
 from typing import Any
 
-import asyncpg
 import structlog
 from langchain_core.runnables import RunnableConfig
 
+from nl2sql.agent.llm import planner_llm
 from nl2sql.agent.state import AgentState, AttemptRecord
 from nl2sql.config import get_settings
 from nl2sql.db.executor import execute_sql
+from nl2sql.db.registry import DatabaseRegistry
+from nl2sql.models import ExecutionResult
 from nl2sql.llm.prompts.plan_sql import CORRECTION_SYSTEM
-from nl2sql.llm.providers import get_planner_llm
 from nl2sql.safety.validator import validate_sql
 
 log = structlog.get_logger()
@@ -50,10 +51,21 @@ def validate_sql_node(state: AgentState) -> dict[str, Any]:
 # ── Node 4: execute_sql ───────────────────────────────────────────────────────
 
 
-async def execute_sql_node(state: AgentState, pool: asyncpg.Pool) -> dict[str, Any]:
-    """Execute the SQL in a read-only transaction."""
+async def execute_sql_node(state: AgentState, registry: DatabaseRegistry) -> dict[str, Any]:
+    """Execute the SQL in a read-only transaction on the request's database."""
     t0 = time.perf_counter()
-    result = await execute_sql(pool, state["generated_sql"])
+    result: ExecutionResult
+    try:
+        # `pool` may be None when tests stub `execute_sql` itself.
+        pool: Any = (await registry.get(state.get("db_id") or None)).pool
+    except Exception as exc:  # unknown database etc.: report as an execution error
+        result = ExecutionResult(success=False, error=f"Database unavailable: {exc}")
+    else:
+        if state.get("eval_mode"):
+            # Benchmark runs compare full result sets: lift the row cap.
+            result = await execute_sql(pool, state["generated_sql"], row_cap=None)
+        else:
+            result = await execute_sql(pool, state["generated_sql"])
     elapsed_ms = round((time.perf_counter() - t0) * 1000)
     timings = dict(state.get("timings", {}))
     timings["execute_sql_ms"] = elapsed_ms
@@ -172,7 +184,8 @@ async def correct_sql_node(state: AgentState, config: RunnableConfig) -> dict[st
         schema_context=state["schema_context"],
     )
 
-    llm = get_planner_llm()
+    llm = planner_llm()
+    llm_error = ""
     try:
         response = await llm.ainvoke(
             [
@@ -190,8 +203,10 @@ async def correct_sql_node(state: AgentState, config: RunnableConfig) -> dict[st
     except Exception as exc:
         log.error("correct_sql_llm_error", error=str(exc))
         corrected_sql = state.get("generated_sql", "")
+        llm_error = str(exc) or type(exc).__name__
 
     return {
+        "llm_error": llm_error,
         "attempt_count": attempt,
         "attempts": attempts,
         "generated_sql": corrected_sql,

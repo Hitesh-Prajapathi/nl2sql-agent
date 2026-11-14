@@ -1,6 +1,6 @@
 """Schema introspection and profiling that scales.
 
-Everything is read from ``pg_catalog`` for the connection's ``current_schema()`` (so a pool whose
+Everything is read from ``pg_catalog`` for the connection's the resolved schema (so a pool whose
 role pins ``search_path`` to one schema introspects exactly that database):
 
 * row counts come from ``pg_class.reltuples`` (an exact ``COUNT(*)`` is used only when the table
@@ -58,12 +58,34 @@ def quote_ident(name: str) -> str:
     return '"' + name.replace('"', '""') + '"'
 
 
+# ── Schema resolution ─────────────────────────────────────────────────────────
+
+
+async def resolve_schema(conn: asyncpg.Connection) -> str:
+    """The schema unqualified names resolve to: first existing entry of ``search_path``.
+
+    Uses ``SHOW`` rather than the resolved schema: hardened read-only roles may lack EXECUTE on
+    that function.
+    """
+    path = str(await conn.fetchval("SHOW search_path"))
+    user = str(await conn.fetchval("SELECT session_user"))
+    for raw in path.split(","):
+        name = raw.strip().strip('"').replace('""', '"')
+        if name == "$user":
+            name = user
+        exists = await conn.fetchval("SELECT 1 FROM pg_namespace WHERE nspname = $1", name)
+        if exists:
+            return name
+    return "public"
+
+
 # ── Catalog hash ──────────────────────────────────────────────────────────────
 
 
 async def get_catalog_hash(pool: asyncpg.Pool) -> str:
     """Hash the current schema to detect changes (for cache invalidation)."""
     async with pool.acquire() as conn:
+        schema = await resolve_schema(conn)
         result = await conn.fetchval(
             """
             SELECT md5(string_agg(
@@ -71,8 +93,9 @@ async def get_catalog_hash(pool: asyncpg.Pool) -> str:
                 '|' ORDER BY table_name, ordinal_position
             ))
             FROM information_schema.columns
-            WHERE table_schema = current_schema()
-            """
+            WHERE table_schema = $1
+            """,
+            schema,
         )
     return str(result or "")
 
@@ -83,12 +106,12 @@ async def get_catalog_hash(pool: asyncpg.Pool) -> str:
 async def build_profile_data(
     pool: asyncpg.Pool, profile: DatabaseProfile | None = None
 ) -> dict[str, Any]:
-    """Collect a JSON-serialisable profile of ``current_schema()``.
+    """Collect a JSON-serialisable profile of the resolved schema.
 
     If a ``DatabaseProfile`` is passed its ``date_ranges`` is refilled (keyed ``table.column``).
     """
     async with pool.acquire() as conn:
-        schema = str(await conn.fetchval("SELECT current_schema()"))
+        schema = await resolve_schema(conn)
         if profile is None:
             db_name = await conn.fetchval("SELECT current_database()")
             profile = DatabaseProfile.from_db_name(
@@ -307,16 +330,19 @@ async def _get_columns(conn: asyncpg.Connection, table_oid: int) -> list[dict[st
 
 
 async def _get_stats(conn: asyncpg.Connection, schema: str, table: str) -> dict[str, dict[str, Any]]:
-    rows = await conn.fetch(
-        """
-        SELECT attname, null_frac, n_distinct,
-               most_common_vals::text::text[] AS mcv,
-               histogram_bounds::text::text[] AS hist
-        FROM pg_stats WHERE schemaname = $1 AND tablename = $2
-        """,
-        schema,
-        table,
-    )
+    try:
+        rows = await conn.fetch(
+            """
+            SELECT attname, null_frac, n_distinct,
+                   most_common_vals::text::text[] AS mcv,
+                   histogram_bounds::text::text[] AS hist
+            FROM pg_stats WHERE schemaname = $1 AND tablename = $2
+            """,
+            schema,
+            table,
+        )
+    except asyncpg.exceptions.InsufficientPrivilegeError:
+        return {}  # hardened role without pg_stats access: fall back to bounded queries
     out: dict[str, dict[str, Any]] = {}
     for r in rows:
         out[r["attname"]] = {

@@ -7,7 +7,7 @@ import asyncpg
 import structlog
 
 from nl2sql.config import get_settings
-from nl2sql.schema.introspect import get_catalog_hash, introspect_schema
+from nl2sql.schema.introspect import get_catalog_hash, introspect_schema, resolve_schema
 from nl2sql.schema.profile import DatabaseProfile
 
 log = structlog.get_logger()
@@ -48,9 +48,9 @@ class FullSchemaProvider(SchemaProvider):
         if self._profile is None:
             async with self._pool.acquire() as conn:
                 # schema-per-database layouts name the database by its (pinned) schema
-                db_name = await conn.fetchval(
-                    "SELECT CASE WHEN current_schema() = 'public' "
-                    "THEN current_database() ELSE current_schema() END"
+                schema = await resolve_schema(conn)
+                db_name = (
+                    await conn.fetchval("SELECT current_database()") if schema == "public" else schema
                 )
             self._profile = DatabaseProfile.from_db_name(db_name)
         context = await introspect_schema(
