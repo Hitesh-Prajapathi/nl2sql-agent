@@ -47,9 +47,15 @@ class FullSchemaProvider(SchemaProvider):
         t0 = time.perf_counter()
         if self._profile is None:
             async with self._pool.acquire() as conn:
-                db_name = await conn.fetchval("SELECT current_database()")
+                # schema-per-database layouts name the database by its (pinned) schema
+                db_name = await conn.fetchval(
+                    "SELECT CASE WHEN current_schema() = 'public' "
+                    "THEN current_database() ELSE current_schema() END"
+                )
             self._profile = DatabaseProfile.from_db_name(db_name)
-        context = await introspect_schema(self._pool, self._profile)
+        context = await introspect_schema(
+            self._pool, self._profile, settings.profile_table_token_budget
+        )
         elapsed = (time.perf_counter() - t0) * 1000
         log.info("schema_introspected", duration_ms=round(elapsed))
 

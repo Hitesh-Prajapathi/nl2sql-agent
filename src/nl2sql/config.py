@@ -48,6 +48,20 @@ class Settings(BaseSettings):
     lock_timeout_ms: int = Field(default=5000)
     schema_cache_ttl_seconds: int = Field(default=300)
 
+    # ── Profiling (Phase 1.3) ─────────────────────────────────────────────────
+    profile_table_token_budget: int = Field(default=1500)
+    profile_dir: str = Field(default="data/profiles")
+
+    # ── Multi-database / BIRD (Phase 1.1-1.2) ─────────────────────────────────
+    # DSN template per db_id (one read-only role + pinned search_path per schema)
+    bird_database_url_template: str = Field(
+        default="postgresql://bird_ro_{db_id}:bird_ro_pass@localhost:5432/bird_minidev"
+    )
+    bird_data_dir: str = Field(default="data/bird_minidev")
+    registry_pool_max_size: int = Field(default=3)
+    # Longer than the interactive default: BIRD gold queries can legitimately run for seconds.
+    eval_statement_timeout_ms: int = Field(default=30000)
+
     # ── App ───────────────────────────────────────────────────────────────────
     log_level: str = Field(default="INFO")
     agent_version: str = Field(default="1.0.0")
