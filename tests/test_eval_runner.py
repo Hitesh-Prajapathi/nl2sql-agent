@@ -209,6 +209,26 @@ async def test_infra_error_backoff_then_success_and_exhaustion() -> None:
     assert recs[0]["status"] == "infra_error" and len(sleeps) == 2
 
 
+async def test_request_too_large_is_not_retried() -> None:
+    sleeps: list[float] = []
+    n = {"calls": 0}
+
+    class TooBig:
+        name = "toobig"
+
+        async def predict(self, q: Question, use_evidence: bool) -> Prediction:
+            n["calls"] += 1
+            return Prediction(status="infra_error", llm_error="Error code: 413 - Request too large")
+
+    async def fake_sleep(s: float) -> None:
+        sleeps.append(s)
+
+    recs = await run_questions(
+        QUESTIONS[:1], TooBig(), MemSql(), TABLE_COLUMNS, RunConfig(ves_repeats=0), sleep=fake_sleep
+    )
+    assert recs[0]["status"] == "infra_error" and n["calls"] == 1 and sleeps == []
+
+
 async def test_bounded_concurrency() -> None:
     import asyncio
 

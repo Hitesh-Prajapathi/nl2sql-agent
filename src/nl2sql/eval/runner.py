@@ -24,7 +24,7 @@ from nl2sql.eval.metrics import (
     ves_time_ratio,
 )
 from nl2sql.eval.sqlrunner import SqlOutcome, SqlRunner
-from nl2sql.eval.variants import Prediction, Variant, is_rate_limit
+from nl2sql.eval.variants import Prediction, Variant, is_permanent_llm_error, is_rate_limit
 
 log = structlog.get_logger()
 
@@ -221,7 +221,7 @@ async def _predict_with_retry(
     """
     pred = await variant.predict(q, cfg.use_evidence)
     for n in range(cfg.max_infra_retries):
-        if pred.status != "infra_error":
+        if pred.status != "infra_error" or is_permanent_llm_error(pred.llm_error):
             break
         text = pred.llm_error
         base = cfg.infra_backoff_s * (4 if is_rate_limit(text) else 1)

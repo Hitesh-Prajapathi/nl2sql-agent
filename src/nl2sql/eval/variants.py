@@ -57,7 +57,13 @@ class Variant(Protocol):
 
 
 def is_rate_limit(text: str) -> bool:
-    return "429" in text or "rate" in text.lower()
+    return "429" in text or "rate limit reached" in text.lower()
+
+
+def is_permanent_llm_error(text: str) -> bool:
+    """Retrying cannot help: the prompt itself exceeds the model's request-size limit (HTTP 413)."""
+    low = text.lower()
+    return "413" in low or "request too large" in low or "context length" in low
 
 
 class FullVariant:
