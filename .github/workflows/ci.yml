@@ -1,0 +1,77 @@
+name: CI
+on:
+  push:
+  pull_request:
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+env:
+  LLM_PROVIDER: fake
+  PGHOST: localhost
+  PGUSER: postgres
+  PGPASSWORD: postgres
+  PGDATABASE: nl2sql_assignment
+  DATABASE_URL: postgresql://nl2sql_reader:reader_pass@localhost:5432/nl2sql_assignment
+  DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/nl2sql_assignment
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: nl2sql_assignment
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d nl2sql_assignment"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: "3.11"
+      - name: Install
+        run: uv sync --frozen --extra dev
+      - name: Ruff lint
+        run: uv run ruff check src tests
+      - name: Ruff format
+        run: uv run ruff format --check src tests
+      - name: Mypy
+        run: uv run mypy src
+      - name: Unit tests
+        run: uv run pytest -q -m "not integration"
+      - name: Initialise database
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
+          for f in db/schema.sql db/seed_data.sql db/setup_role.sql db/audit.sql; do
+            if [ -f "$f" ]; then echo "applying $f"; psql -v ON_ERROR_STOP=1 -f "$f"; fi
+          done
+      - name: Integration tests with coverage
+        run: |
+          uv run --with pytest-cov pytest -q -m integration \
+            --cov=src/nl2sql --cov-report=term --cov-report=xml
+      - name: SQL red-team tests
+        run: |
+          files=""
+          for f in tests/test_redteam_sql.py tests/test_injection_guard.py; do
+            [ -f "$f" ] && files="$files $f"
+          done
+          if [ -z "$files" ]; then echo "No red-team test files present; skipping."; else
+            uv run pytest -q $files
+          fi
+      - name: Coverage summary
+        if: always()
+        run: |
+          {
+            echo "## Coverage (integration run)"
+            echo '```'
+            uv run --with coverage coverage report 2>/dev/null || echo "no coverage data"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

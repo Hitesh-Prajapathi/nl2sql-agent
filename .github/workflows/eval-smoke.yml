@@ -1,0 +1,69 @@
+name: Eval smoke
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+    paths:
+      - "src/nl2sql/agent/**"
+      - "src/nl2sql/llm/**"
+      - "src/nl2sql/schema/**"
+      - "src/nl2sql/safety/**"
+  workflow_dispatch:
+concurrency:
+  group: eval-smoke-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  smoke:
+    # Path filter above handles the path trigger; the "labeled" action only runs for the "eval" label.
+    # Never runs for fork PRs.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.head.repo.full_name == github.repository &&
+       (github.event.action != 'labeled' || github.event.label.name == 'eval'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+    steps:
+      - name: Check secret
+        id: gate
+        run: |
+          if [ -z "$GROQ_API_KEY" ]; then
+            echo "GROQ_API_KEY not available; skipping eval smoke."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.run == 'true'
+      - uses: astral-sh/setup-uv@v5
+        if: steps.gate.outputs.run == 'true'
+        with:
+          enable-cache: true
+          python-version: "3.11"
+      - name: Install
+        if: steps.gate.outputs.run == 'true'
+        run: uv sync --frozen --extra dev
+      - name: Set up BIRD data
+        if: steps.gate.outputs.run == 'true'
+        # TODO: confirm CLI once harness lands (no bird-setup target in the Makefile yet)
+        run: make bird-setup
+      - name: Run eval on fixed subset
+        if: steps.gate.outputs.run == 'true'
+        # TODO: confirm CLI once harness lands
+        run: uv run python -m nl2sql.eval.runner --variant full --ids-file .github/eval_smoke_ids.txt
+      - name: Gate on baseline
+        if: steps.gate.outputs.run == 'true'
+        # TODO: confirm CLI once harness lands (results path and JSON key "correct" are assumptions)
+        run: |
+          baseline=$(grep -v '^#' .github/eval_smoke_baseline.txt | head -1)
+          correct=$(python3 -c "import json,glob; f=sorted(glob.glob('results/**/*.json', recursive=True))[-1]; print(json.load(open(f))['correct'])")
+          echo "correct=$correct baseline=$baseline" | tee -a "$GITHUB_STEP_SUMMARY"
+          if [ "$correct" -lt $((baseline - 2)) ]; then echo "Below baseline - 2"; exit 1; fi
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.gate.outputs.run == 'true'
+        with:
+          name: eval-smoke-results
+          path: results/
+          if-no-files-found: ignore

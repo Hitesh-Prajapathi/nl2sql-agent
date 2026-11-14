@@ -1,0 +1,3 @@
+# PLACEHOLDER: replace the line below with the integer correct-count of the full variant on eval_smoke_ids.txt.
+# The gate fails when correct < baseline - 2. Lines starting with # are ignored.
+0
