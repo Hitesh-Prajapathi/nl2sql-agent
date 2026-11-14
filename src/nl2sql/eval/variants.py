@@ -171,13 +171,15 @@ def build_ddl(profile: dict[str, Any]) -> str:
     """
     parts: list[str] = []
     for t in profile["tables"]:
-        lines = [f'  "{c["name"]}" {c["type"]}{"" if c["nullable"] else " NOT NULL"}' for c in t["columns"]]
+        lines = [
+            f'  "{c["name"]}" {c["type"]}{"" if c["nullable"] else " NOT NULL"}'
+            for c in t["columns"]
+        ]
         if t.get("primary_key"):
             lines.append("  PRIMARY KEY (" + ", ".join(f'"{c}"' for c in t["primary_key"]) + ")")
         for fk in t.get("foreign_keys", []):
-            lines.append(
-                f'  FOREIGN KEY ("{fk["column"]}") REFERENCES "{fk["foreign_table"]}"("{fk["foreign_column"]}")'
-            )
+            ref = f'"{fk["foreign_table"]}"("{fk["foreign_column"]}")'
+            lines.append(f'  FOREIGN KEY ("{fk["column"]}") REFERENCES {ref}')
         parts.append(f'CREATE TABLE "{t["name"]}" (\n' + ",\n".join(lines) + "\n);")
     return "\n\n".join(parts)
 

@@ -156,9 +156,7 @@ class GoldLinks:
     unresolved: int  # column references that could not be tied to a base table
 
 
-def gold_links(
-    gold_sql: str, schema: dict[str, list[str]] | None = None
-) -> GoldLinks | None:
+def gold_links(gold_sql: str, schema: dict[str, list[str]] | None = None) -> GoldLinks | None:
     """Tables and ``table.column`` pairs referenced by ``gold_sql``; None if it cannot be parsed.
 
     ``schema`` maps lower-case table -> lower-case columns. It resolves unqualified columns to the
@@ -227,7 +225,9 @@ def parse_predicted_links(
     return tables, columns
 
 
-def set_precision_recall(pred: set[str], gold: frozenset[str] | set[str]) -> tuple[float | None, float | None]:
+def set_precision_recall(
+    pred: set[str], gold: frozenset[str] | set[str]
+) -> tuple[float | None, float | None]:
     """(precision, recall); None when the corresponding denominator is empty."""
     hit = len(pred & gold)
     precision = hit / len(pred) if pred else None

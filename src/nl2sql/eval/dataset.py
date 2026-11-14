@@ -42,7 +42,9 @@ def load_questions(data_dir: str | Path, file: str | Path | None = None) -> list
     ]
 
 
-def load_table_columns(data_dir: str | Path, file: str | Path | None = None) -> dict[str, dict[str, list[str]]]:
+def load_table_columns(
+    data_dir: str | Path, file: str | Path | None = None
+) -> dict[str, dict[str, list[str]]]:
     """db_id -> lower(table) -> [lower(column), ...] from dev_tables.json."""
     path = Path(file) if file else Path(data_dir) / TABLES_REL
     out: dict[str, dict[str, list[str]]] = {}

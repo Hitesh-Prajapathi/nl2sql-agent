@@ -67,9 +67,7 @@ def summarize(
     summary["soft_f1"] = _pct([float(r["soft_f1"]) for r in scored])
     ves_per_q = [math.sqrt(r["ves_reward"]) for r in scored]
     summary["r_ves"] = _pct(ves_per_q)
-    summary["by_difficulty"] = {
-        k: v for k, v in _group(scored, "difficulty").items()
-    }
+    summary["by_difficulty"] = {k: v for k, v in _group(scored, "difficulty").items()}
     summary["by_db_id"] = _group(scored, "db_id")
 
     # clarify / refuse / failure all count as wrong; reported on their own as well
@@ -133,9 +131,10 @@ def summarize(
     }
     cost, missing = compute_cost(tokens, pricing or {})
     summary["cost_usd"] = None if cost is None else round(cost, 6)
-    summary["cost_note"] = (
-        "tokens counted for every call including cache hits (as if paid); "
-        + (f"no price configured for: {', '.join(missing)}" if missing else "priced from config/pricing.yaml")
+    summary["cost_note"] = "tokens counted for every call including cache hits (as if paid); " + (
+        f"no price configured for: {', '.join(missing)}"
+        if missing
+        else "priced from config/pricing.yaml"
     )
 
     lat = [float(r["latency_s"]) for r in scored if r["latency_s"] is not None]

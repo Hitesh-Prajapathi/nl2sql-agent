@@ -22,7 +22,14 @@ def prompt_hash(extra: list[str] | None = None) -> str:
     from nl2sql.llm.prompts.plan_sql import CORRECTION_SYSTEM, HINT_TEMPLATE, PLAN_SQL_SYSTEM
 
     h = hashlib.sha256()
-    for part in [PLAN_SQL_SYSTEM, CORRECTION_SYSTEM, HINT_TEMPLATE, NAIVE_SYSTEM, NAIVE_HINT, *(extra or [])]:
+    for part in [
+        PLAN_SQL_SYSTEM,
+        CORRECTION_SYSTEM,
+        HINT_TEMPLATE,
+        NAIVE_SYSTEM,
+        NAIVE_HINT,
+        *(extra or []),
+    ]:
         h.update(part.encode())
         h.update(b"\x00")
     return h.hexdigest()
@@ -124,7 +131,8 @@ def headline_row(results: dict[str, Any]) -> str:
     return (
         f"| {results['label']} | {s['n_scored']}/{s['n_total']} | {_cell(s.get('ex'))} | "
         f"{_cell(s.get('soft_f1'))} | {_cell(s.get('r_ves'))} | "
-        f"{_cell(rates.get('clarify'))} / {_cell(rates.get('refuse'))} / {_cell(rates.get('failed'))} | "
+        f"{_cell(rates.get('clarify'))} / {_cell(rates.get('refuse'))} / "
+        f"{_cell(rates.get('failed'))} | "
         f"{_num(s.get('mean_attempts'))} | "
         f"{'n/a (no price configured)' if cost is None else f'${cost:.4f}'} | "
         f"{_num(lat.get('p50'), '{:.1f}')} / {_num(lat.get('p95'), '{:.1f}')} |"
@@ -147,7 +155,8 @@ def render_markdown(results: dict[str, Any]) -> str:
         + (" (dirty working tree)" if meta["git"].get("dirty") else ""),
         f"- models: {json.dumps(meta['models'])}",
         f"- flags: {json.dumps(meta['flags'])}",
-        f"- dataset sha256: `{meta['dataset_sha256'][:16]}`, prompt sha256: `{meta['prompt_sha256'][:16]}`",
+        f"- dataset sha256: `{meta['dataset_sha256'][:16]}`, "
+        f"prompt sha256: `{meta['prompt_sha256'][:16]}`",
         f"- started: {meta['started_at']}, wall: {meta['wall_seconds']} s",
         f"- complete run: {results['complete']}"
         + ("" if results["complete"] else " (subset: NOT comparable to published numbers)"),
@@ -163,12 +172,27 @@ def render_markdown(results: dict[str, Any]) -> str:
             "",
         ]
     if "by_difficulty" in s:
-        lines += ["## By difficulty", "", "| difficulty | n | EX % | Soft F1 % | R-VES |", "|---|---|---|---|---|"]
+        lines += [
+            "## By difficulty",
+            "",
+            "| difficulty | n | EX % | Soft F1 % | R-VES |",
+            "|---|---|---|---|---|",
+        ]
         for k, v in s["by_difficulty"].items():
-            lines.append(f"| {k} | {v['n']} | {v['ex']:.1f} | {v['soft_f1']:.1f} | {v['r_ves']:.1f} |")
-        lines += ["", "## By database", "", "| db_id | n | EX % | Soft F1 % | R-VES |", "|---|---|---|---|---|"]
+            lines.append(
+                f"| {k} | {v['n']} | {v['ex']:.1f} | {v['soft_f1']:.1f} | {v['r_ves']:.1f} |"
+            )
+        lines += [
+            "",
+            "## By database",
+            "",
+            "| db_id | n | EX % | Soft F1 % | R-VES |",
+            "|---|---|---|---|---|",
+        ]
         for k, v in s["by_db_id"].items():
-            lines.append(f"| {k} | {v['n']} | {v['ex']:.1f} | {v['soft_f1']:.1f} | {v['r_ves']:.1f} |")
+            lines.append(
+                f"| {k} | {v['n']} | {v['ex']:.1f} | {v['soft_f1']:.1f} | {v['r_ves']:.1f} |"
+            )
         sl, rr = s["schema_linking"], s["retry_recovery"]
         lines += [
             "",
@@ -214,7 +238,10 @@ def render_readme_tables(all_results: list[dict[str, Any]]) -> str:
     ]
     for label, r in latest.items():
         bd = r["summary"].get("by_difficulty", {})
-        cells = " | ".join(f"{bd[d]['ex']:.1f}" if d in bd else "n/a" for d in ("simple", "moderate", "challenging"))
+        cells = " | ".join(
+            f"{bd[d]['ex']:.1f}" if d in bd else "n/a"
+            for d in ("simple", "moderate", "challenging")
+        )
         out.append(f"| {label} | {cells} |")
     return "\n".join(out) + "\n"
 

@@ -12,7 +12,7 @@ Usage: ``uv run python scripts/bird_setup.py [--skip-download] [--force-reload]`
 Environment:
   BIRD_ADMIN_URL      superuser DSN to the maintenance DB (default postgres/postgres@localhost)
   BIRD_DB_NAME        database to create (default bird_minidev)
-  BIRD_PG_CONTAINER   docker container used for ``psql`` when no local psql (default nl2sql_postgres)
+  BIRD_PG_CONTAINER   docker container for ``psql`` when no local psql (default nl2sql_postgres)
 """
 
 from __future__ import annotations
@@ -52,7 +52,9 @@ DUMP = RAW_DIR / "minidev" / "MINIDEV_postgresql" / "BIRD_dev.sql"
 QUESTIONS = RAW_DIR / "minidev" / "MINIDEV" / "mini_dev_postgresql.json"
 TABLES_JSON = RAW_DIR / "minidev" / "MINIDEV" / "dev_tables.json"
 
-ADMIN_URL = os.environ.get("BIRD_ADMIN_URL", "postgresql://postgres:postgres@localhost:5432/postgres")
+ADMIN_URL = os.environ.get(
+    "BIRD_ADMIN_URL", "postgresql://postgres:postgres@localhost:5432/postgres"
+)
 DB_NAME = os.environ.get("BIRD_DB_NAME", "bird_minidev")
 CONTAINER = os.environ.get("BIRD_PG_CONTAINER", "nl2sql_postgres")
 ROLE_PREFIX = "bird_ro_"
@@ -150,21 +152,19 @@ def reorganise(conn: psycopg.Connection, owners: dict[str, str]) -> None:
         "WHERE table_schema='public' AND table_type='BASE TABLE'"
     ).fetchall()
     for (name,) in rows:
-        db_id = owners.get(name.lower())
-        if db_id is None:
+        target = owners.get(name.lower())
+        if target is None:
             raise RuntimeError(f"table {name!r} not in dev_tables.json")
         conn.execute(
             sql.SQL("ALTER TABLE public.{} SET SCHEMA {}").format(
-                sql.Identifier(name), sql.Identifier(db_id)
+                sql.Identifier(name), sql.Identifier(target)
             )
         )
 
 
 def create_roles(conn: psycopg.Connection, db_ids: list[str]) -> None:
     """One read-only role per schema; same protections as db/setup_role.sql plus search_path."""
-    conn.execute(
-        sql.SQL("REVOKE ALL ON DATABASE {} FROM PUBLIC").format(sql.Identifier(DB_NAME))
-    )
+    conn.execute(sql.SQL("REVOKE ALL ON DATABASE {} FROM PUBLIC").format(sql.Identifier(DB_NAME)))
     conn.execute("REVOKE ALL ON SCHEMA public FROM PUBLIC")
     for db_id in db_ids:
         role = sql.Identifier(ROLE_PREFIX + db_id)
@@ -178,7 +178,9 @@ def create_roles(conn: psycopg.Connection, db_ids: list[str]) -> None:
             )
         )
         schema = sql.Identifier(db_id)
-        conn.execute(sql.SQL("GRANT CONNECT ON DATABASE {} TO {}").format(sql.Identifier(DB_NAME), role))
+        conn.execute(
+            sql.SQL("GRANT CONNECT ON DATABASE {} TO {}").format(sql.Identifier(DB_NAME), role)
+        )
         conn.execute(sql.SQL("REVOKE ALL ON ALL TABLES IN SCHEMA {} FROM {}").format(schema, role))
         conn.execute(sql.SQL("GRANT USAGE ON SCHEMA {} TO {}").format(schema, role))
         conn.execute(sql.SQL("GRANT SELECT ON ALL TABLES IN SCHEMA {} TO {}").format(schema, role))
@@ -256,9 +258,7 @@ def main() -> None:
     with psycopg.connect(db_url(DB_NAME), autocommit=True) as conn:
         schemas = {
             r[0]
-            for r in conn.execute(
-                "SELECT schema_name FROM information_schema.schemata"
-            ).fetchall()
+            for r in conn.execute("SELECT schema_name FROM information_schema.schemata").fetchall()
         }
         loaded = set(db_ids) <= schemas and public_table_count(conn) == 0
         if not loaded:

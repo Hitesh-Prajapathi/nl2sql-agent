@@ -227,7 +227,13 @@ async def _predict_with_retry(
         base = cfg.infra_backoff_s * (4 if is_rate_limit(text) else 1)
         delay = min(cfg.infra_backoff_cap_s, base * 2**n)
         delay = random.uniform(delay / 2, delay)  # noqa: S311 - jitter, not crypto
-        log.warning("eval_infra_retry", question_id=q.question_id, attempt=n + 1, delay_s=round(delay, 1), error=text[:120])
+        log.warning(
+            "eval_infra_retry",
+            question_id=q.question_id,
+            attempt=n + 1,
+            delay_s=round(delay, 1),
+            error=text[:120],
+        )
         await sleep(delay)
         pred = await variant.predict(q, cfg.use_evidence)
     return pred

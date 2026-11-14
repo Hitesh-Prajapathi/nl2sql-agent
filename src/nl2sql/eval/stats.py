@@ -41,8 +41,7 @@ def bootstrap_ci(
     alpha = (1 - confidence) / 2 * 100
     lo = percentile(means, alpha)
     hi = percentile(means, 100 - alpha)
-    assert lo is not None and hi is not None
-    return (lo, hi)
+    return (lo or 0.0, hi or 0.0)
 
 
 def paired_bootstrap_diff(
@@ -53,5 +52,5 @@ def paired_bootstrap_diff(
         return None
     diffs = [x - y for x, y in zip(a, b, strict=True)]
     ci = bootstrap_ci(diffs, n_resamples=n_resamples, seed=seed)
-    assert ci is not None
-    return (sum(diffs) / len(diffs), ci[0], ci[1])
+    lo, hi = ci if ci else (0.0, 0.0)
+    return (sum(diffs) / len(diffs), lo, hi)

@@ -95,12 +95,13 @@ def profile(
                 data = load_profile(path)
                 text = render_context(data, s.profile_table_token_budget)
                 per_table = [
-                    estimate_tokens(text_part)
-                    for text_part in text.split("--- TABLE:")[1:]
+                    estimate_tokens(text_part) for text_part in text.split("--- TABLE:")[1:]
                 ]
                 typer.echo(
-                    f"{db_id}: {len(data['tables'])} tables, ~{estimate_tokens(text)} prompt tokens "
-                    f"(largest table ~{max(per_table, default=0)}), {time.perf_counter() - t0:.1f}s -> {path}"
+                    f"{db_id}: {len(data['tables'])} tables, "
+                    f"~{estimate_tokens(text)} prompt tokens "
+                    f"(largest table ~{max(per_table, default=0)}), "
+                    f"{time.perf_counter() - t0:.1f}s -> {path}"
                 )
         finally:
             await registry.close()
@@ -111,7 +112,9 @@ def profile(
 @app.command("check-gold")
 def check_gold(
     data_dir: Path = typer.Option(None),
-    out: Path = typer.Option(None, help="output JSON (default results/bird_minidev_gold_check_<date>.json)"),
+    out: Path = typer.Option(
+        None, help="output JSON (default results/bird_minidev_gold_check_<date>.json)"
+    ),
     concurrency: int = typer.Option(4),
 ) -> None:
     """Run every gold SQL through the per-db roles and through validate_sql (false-block count)."""
@@ -194,7 +197,9 @@ def run(
     questions = _select(all_questions, limit, ids, spread)
     if not questions:
         raise typer.BadParameter("no questions selected")
-    table_columns = load_table_columns(data_dir) if questions_file is None else {}
+    table_columns: dict[str, dict[str, list[str]]] = (
+        load_table_columns(data_dir) if questions_file is None else {}
+    )
     use_evidence = not no_evidence
     note = None
     if len(questions) != len(all_questions):
@@ -284,7 +289,9 @@ def run(
     results = asyncio.run(go())
     jpath, mpath = write_results(results, out_dir, base)
     sm = results["summary"]
-    typer.echo(json.dumps({k: sm.get(k) for k in ("n_total", "n_scored", "n_infra_error", "ex")}, indent=1))
+    typer.echo(
+        json.dumps({k: sm.get(k) for k in ("n_total", "n_scored", "n_infra_error", "ex")}, indent=1)
+    )
     typer.echo(f"wrote {jpath} and {mpath}")
 
 

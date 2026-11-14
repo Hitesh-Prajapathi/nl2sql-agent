@@ -46,7 +46,9 @@ class UsageBucket:
 class UsageCollector:
     """Per-question usage keyed by (graph node, model id)."""
 
-    buckets: dict[tuple[str, str], UsageBucket] = field(default_factory=lambda: defaultdict(UsageBucket))
+    buckets: dict[tuple[str, str], UsageBucket] = field(
+        default_factory=lambda: defaultdict(UsageBucket)
+    )
 
     def record(
         self, node: str, model_id: str, input_tokens: int, output_tokens: int, cached: bool
@@ -197,9 +199,12 @@ class CachedLLM:
         if self._cache is not None:
             self._cache.put(
                 key,
-                {"content": content, "usage": {"input": capture.input_tokens, "output": capture.output_tokens}},
+                {
+                    "content": content,
+                    "usage": {"input": capture.input_tokens, "output": capture.output_tokens},
+                },
             )
-        return cast(AIMessage, resp)
+        return resp
 
     def with_structured_output(
         self, schema: type[BaseModel], *, method: str = "json_mode", **kwargs: Any
