@@ -67,3 +67,7 @@ check: lint
 # ── Convenience ───────────────────────────────────────────────────────────────
 logs:
 	tail -f nl2sql.log 2>/dev/null || echo "No log file found."
+
+# ── Load test (mock LLM; needs Postgres, starts its own uvicorn on :8765) ────
+loadtest:
+	PYTHONPATH=$(PWD)/src:$(PWD) uv run --extra loadtest python loadtest/run.py
