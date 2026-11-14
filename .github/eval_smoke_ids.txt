@@ -1,0 +1,2 @@
+# PLACEHOLDER: replace with 25 stratified BIRD Mini-Dev question ids, one per line.
+# Generate once with the eval harness (stratified by difficulty), then commit it so the subset stays fixed.
