@@ -72,6 +72,10 @@ check: lint
 logs:
 	tail -f nl2sql.log 2>/dev/null || echo "No log file found."
 
+# ── Load test (mock LLM; needs Postgres, starts its own uvicorn on :8765) ────
+loadtest:
+	# caffeinate (macOS) stops host sleep from stalling the measurement
+	PYTHONPATH=$(PWD)/src:$(PWD) $(shell command -v caffeinate >/dev/null && echo "caffeinate -dims") uv run --extra loadtest python loadtest/run.py
 # ── BIRD Mini-Dev evaluation (Phase 1) ───────────────────────────────────────
 VARIANT ?= full
 LIMIT ?=

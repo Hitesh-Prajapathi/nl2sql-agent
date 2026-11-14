@@ -1,0 +1,176 @@
+{
+  "mode": "mock-LLM (LLM_PROVIDER=fake); latencies are ASSUMPTIONS, not measured",
+  "date": "2026-11-14",
+  "git_sha": "eee7f8c",
+  "tag": "baseline",
+  "notes": "Baseline: defaults (pool max_size 10, LLM_MAX_CONCURRENCY 8), in-memory sessions, 1 worker.",
+  "workers": 1,
+  "ramp_s": 15,
+  "steady_s": 60,
+  "settings": {
+    "pool_min_size": 2,
+    "pool_max_size": 10,
+    "llm_max_concurrency": 8,
+    "rate_limit_enabled": false,
+    "audit_enabled": false,
+    "traffic_mix": "70% simple / 20% complex joins / 10% 2-turn follow-ups (same thread_id)",
+    "think_time_s": "uniform 0.2-1.0",
+    "endpoint": "POST /v1/query"
+  },
+  "fake_latency_ms_lognormal": {
+    "plan_median": 900.0,
+    "plan_p95": 2500.0,
+    "fast_median": 300.0,
+    "fast_p95": 800.0
+  },
+  "levels": [
+    {
+      "users": 1,
+      "requests": 39,
+      "rps": 0.65,
+      "error_rate_pct": 0.0,
+      "p50_ms": 864,
+      "p95_ms": 1743,
+      "p99_ms": 2842,
+      "per_name_p50_ms": {
+        "complex": 878,
+        "followup_turn1": 1470,
+        "followup_turn2": 579,
+        "simple": 829
+      },
+      "pool_size_max": 2,
+      "pool_idle_min": 1,
+      "pool_max": 10,
+      "acquire_wait_ms": {
+        "n": 79.0,
+        "mean": 0.017916125722842503,
+        "p95": 0.02795798354782164,
+        "p99": 0.03816699609160423,
+        "max": 0.03816699609160423
+      },
+      "loop_lag_ms": {
+        "n": 1140.0,
+        "mean": 1.0317015237728384,
+        "p95": 1.8037079891655567,
+        "p99": 5.19883401575498,
+        "max": 21.99270799173973
+      },
+      "valid": true,
+      "server_cpu_pct_mean": 1.4,
+      "server_cpu_pct_max": 2.6,
+      "server_rss_mb_max": 107.3,
+      "locust_cpu_pct_mean": 0.2
+    },
+    {
+      "users": 10,
+      "requests": 344,
+      "rps": 5.73,
+      "error_rate_pct": 0.0,
+      "p50_ms": 953,
+      "p95_ms": 2827,
+      "p99_ms": 3762,
+      "per_name_p50_ms": {
+        "complex": 952,
+        "followup_turn1": 959,
+        "followup_turn2": 960,
+        "simple": 923
+      },
+      "pool_size_max": 3,
+      "pool_idle_min": 2,
+      "pool_max": 10,
+      "acquire_wait_ms": {
+        "n": 678.0,
+        "mean": 0.053751576308279155,
+        "p95": 0.022958003683015704,
+        "p99": 0.02941599814221263,
+        "max": 27.869207988260314
+      },
+      "loop_lag_ms": {
+        "n": 1142.0,
+        "mean": 0.938791693287129,
+        "p95": 1.5148749982472483,
+        "p99": 4.101749992696566,
+        "max": 30.89816701249219
+      },
+      "valid": true,
+      "server_cpu_pct_mean": 7.6,
+      "server_cpu_pct_max": 11.9,
+      "server_rss_mb_max": 109.8,
+      "locust_cpu_pct_mean": 0.8
+    },
+    {
+      "users": 50,
+      "requests": 384,
+      "rps": 6.4,
+      "error_rate_pct": 0.0,
+      "p50_ms": 6318,
+      "p95_ms": 7886,
+      "p99_ms": 9579,
+      "per_name_p50_ms": {
+        "complex": 6284,
+        "followup_turn1": 6157,
+        "followup_turn2": 6338,
+        "simple": 6350
+      },
+      "pool_size_max": 5,
+      "pool_idle_min": 4,
+      "pool_max": 10,
+      "acquire_wait_ms": {
+        "n": 824.0,
+        "mean": 0.01135953538570761,
+        "p95": 0.019750004867091775,
+        "p99": 0.026125024305656552,
+        "max": 0.5459999956656247
+      },
+      "loop_lag_ms": {
+        "n": 1144.0,
+        "mean": 0.858723087257856,
+        "p95": 1.2081660272087875,
+        "p99": 4.720167012419549,
+        "max": 18.607207998866212
+      },
+      "valid": true,
+      "server_cpu_pct_mean": 7.9,
+      "server_cpu_pct_max": 13.8,
+      "server_rss_mb_max": 115.9,
+      "locust_cpu_pct_mean": 0.8
+    },
+    {
+      "users": 100,
+      "requests": 365,
+      "rps": 6.08,
+      "error_rate_pct": 0.0,
+      "p50_ms": 12446,
+      "p95_ms": 14398,
+      "p99_ms": 15504,
+      "per_name_p50_ms": {
+        "complex": 12545,
+        "followup_turn1": 12295,
+        "followup_turn2": 12946,
+        "simple": 12412
+      },
+      "pool_size_max": 8,
+      "pool_idle_min": 7,
+      "pool_max": 10,
+      "acquire_wait_ms": {
+        "n": 896.0,
+        "mean": 0.012006931131379264,
+        "p95": 0.021624990040436387,
+        "p99": 0.025332992663607,
+        "max": 0.1096250198315829
+      },
+      "loop_lag_ms": {
+        "n": 1144.0,
+        "mean": 0.892748002386633,
+        "p95": 1.2542499927803847,
+        "p99": 2.907583012711254,
+        "max": 47.25204200367443
+      },
+      "valid": true,
+      "server_cpu_pct_mean": 9.7,
+      "server_cpu_pct_max": 16.7,
+      "server_rss_mb_max": 124.5,
+      "locust_cpu_pct_mean": 1.1
+    }
+  ]
+}
