@@ -1,0 +1,79 @@
+{
+  "title": "NL2SQL Agent",
+  "uid": "nl2sql-agent",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      { "name": "DS_PROMETHEUS", "type": "datasource", "query": "prometheus", "label": "Prometheus" }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1, "type": "timeseries", "title": "Request rate by status",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [{ "expr": "sum by (status) (rate(nl2sql_requests_total[1m]))", "legendFormat": "{{status}}" }]
+    },
+    {
+      "id": 2, "type": "timeseries", "title": "Request latency p50 / p95 / p99",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum by (le) (rate(nl2sql_request_latency_seconds_bucket[5m])))", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.95, sum by (le) (rate(nl2sql_request_latency_seconds_bucket[5m])))", "legendFormat": "p95" },
+        { "expr": "histogram_quantile(0.99, sum by (le) (rate(nl2sql_request_latency_seconds_bucket[5m])))", "legendFormat": "p99" }
+      ]
+    },
+    {
+      "id": 3, "type": "timeseries", "title": "Safety blocks by layer",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [{ "expr": "sum by (layer) (increase(nl2sql_blocks_total[5m]))", "legendFormat": "{{layer}}" }]
+    },
+    {
+      "id": 4, "type": "timeseries", "title": "LLM retries and fallbacks",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        { "expr": "sum by (reason) (rate(nl2sql_llm_retries_total[1m]))", "legendFormat": "retry {{reason}}" },
+        { "expr": "rate(nl2sql_llm_fallbacks_total[1m])", "legendFormat": "fallback" }
+      ]
+    },
+    {
+      "id": 5, "type": "timeseries", "title": "Tokens per second",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [{ "expr": "sum by (direction) (rate(nl2sql_llm_tokens_total[1m]))", "legendFormat": "{{direction}}" }]
+    },
+    {
+      "id": 6, "type": "stat", "title": "Estimated spend (24h, USD)",
+      "gridPos": { "h": 8, "w": 4, "x": 8, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "unit": "currencyUSD" } },
+      "targets": [{ "expr": "sum(increase(nl2sql_cost_usd_total[24h]))" }]
+    },
+    {
+      "id": 7, "type": "timeseries", "title": "Node latency p95",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "targets": [{ "expr": "histogram_quantile(0.95, sum by (le, node) (rate(nl2sql_node_latency_seconds_bucket[5m])))", "legendFormat": "{{node}}" }]
+    },
+    {
+      "id": 8, "type": "stat", "title": "LLM circuit breaker (1 = open)",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [{ "expr": "max(nl2sql_llm_breaker_open)" }]
+    },
+    {
+      "id": 9, "type": "timeseries", "title": "Rate-limited requests",
+      "gridPos": { "h": 4, "w": 18, "x": 6, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [{ "expr": "sum by (scope) (rate(nl2sql_rate_limited_total[1m]))", "legendFormat": "{{scope}}" }]
+    }
+  ]
+}
