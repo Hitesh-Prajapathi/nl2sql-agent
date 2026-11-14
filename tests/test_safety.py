@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import pytest
 from nl2sql.safety.validator import validate_sql
 
 
@@ -8,8 +7,10 @@ def test_select_queries_allowed() -> None:
     valid_queries = [
         "SELECT * FROM customers;",
         "SELECT count(*), status FROM orders GROUP BY status;",
-        "SELECT c.name, sum(o.total_amount) FROM customers c JOIN orders o ON c.customer_id = o.customer_id GROUP BY c.name;",
-        "WITH delivered_orders AS (SELECT * FROM orders WHERE status = 'delivered') SELECT * FROM delivered_orders;",
+        "SELECT c.name, sum(o.total_amount) FROM customers c "
+        "JOIN orders o ON c.customer_id = o.customer_id GROUP BY c.name;",
+        "WITH delivered_orders AS (SELECT * FROM orders WHERE status = 'delivered') "
+        "SELECT * FROM delivered_orders;",
     ]
     for sql in valid_queries:
         result = validate_sql(sql)
@@ -62,3 +63,29 @@ def test_disallowed_system_tables_blocked() -> None:
         result = validate_sql(sql)
         assert not result.is_valid
         assert result.is_safety_block
+
+
+def test_known_bypasses_from_audit_are_blocked() -> None:
+    bypasses = [
+        "SELECT query_to_xml('select * from pg_catalog.pg_roles', true, true, '')",
+        "SELECT current_setting('data_directory')",
+        "SELECT version()",
+        "SELECT pg_ls_logdir()",
+        "SELECT pg_advisory_lock(1)",
+        "SELECT txid_current()",
+        "SELECT lo_from_bytea(0,'x')",
+    ]
+    for sql in bypasses:
+        result = validate_sql(sql)
+        assert not result.is_valid, f"Expected '{sql}' to be blocked"
+        assert result.is_safety_block
+
+
+def test_syntax_error_is_retryable_not_terminal() -> None:
+    result = validate_sql("SELECT * FROM orders WHERE (status = ")
+    assert not result.is_valid
+    assert not result.is_safety_block
+
+
+def test_empty_sql_is_invalid() -> None:
+    assert not validate_sql("   ").is_valid
