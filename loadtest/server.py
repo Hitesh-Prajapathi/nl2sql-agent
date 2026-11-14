@@ -36,7 +36,7 @@ if _pool_max:
     _orig_create_pool = asyncpg.create_pool
 
     def _create_pool(*args: Any, **kwargs: Any) -> Any:
-        kwargs["max_size"] = int(_pool_max)
+        kwargs["max_size"] = int(str(_pool_max))
         return _orig_create_pool(*args, **kwargs)
 
     asyncpg.create_pool = _create_pool

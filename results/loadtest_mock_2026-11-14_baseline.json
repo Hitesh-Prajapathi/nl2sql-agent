@@ -1,0 +1,172 @@
+{
+  "mode": "mock-LLM (LLM_PROVIDER=fake); latencies are ASSUMPTIONS, not measured",
+  "date": "2026-11-14",
+  "git_sha": "315def2",
+  "tag": "baseline",
+  "notes": "Baseline: defaults (pool max_size 10, LLM_MAX_CONCURRENCY 8).",
+  "workers": 1,
+  "ramp_s": 15,
+  "steady_s": 60,
+  "settings": {
+    "pool_min_size": 2,
+    "pool_max_size": 10,
+    "llm_max_concurrency": 8,
+    "rate_limit_enabled": false,
+    "audit_enabled": false,
+    "traffic_mix": "70% simple / 20% complex joins / 10% 2-turn follow-ups (same thread_id)",
+    "think_time_s": "uniform 0.2-1.0",
+    "endpoint": "POST /v1/query"
+  },
+  "fake_latency_ms_lognormal": {
+    "plan_median": 900.0,
+    "plan_p95": 2500.0,
+    "fast_median": 300.0,
+    "fast_p95": 800.0
+  },
+  "levels": [
+    {
+      "users": 1,
+      "requests": 40,
+      "rps": 0.67,
+      "error_rate_pct": 0.0,
+      "p50_ms": 867,
+      "p95_ms": 1760,
+      "p99_ms": 2849,
+      "per_name_p50_ms": {
+        "complex": 927,
+        "followup_turn1": 1110,
+        "followup_turn2": 818,
+        "simple": 709
+      },
+      "pool_size_max": 2,
+      "pool_idle_min": 1,
+      "pool_max": 10,
+      "acquire_wait_ms": {
+        "n": 79.0,
+        "mean": 0.01697362322489955,
+        "p95": 0.032458017813041806,
+        "p99": 0.0356250093318522,
+        "max": 0.0356250093318522
+      },
+      "loop_lag_ms": {
+        "n": 1141.0,
+        "mean": 0.9629509535513621,
+        "p95": 1.628041983349246,
+        "p99": 3.3106660004705164,
+        "max": 11.82716699549928
+      },
+      "server_cpu_pct_mean": 1.5,
+      "server_cpu_pct_max": 2.6,
+      "server_rss_mb_max": 106.3,
+      "locust_cpu_pct_mean": 0.2
+    },
+    {
+      "users": 10,
+      "requests": 339,
+      "rps": 5.65,
+      "error_rate_pct": 0.0,
+      "p50_ms": 961,
+      "p95_ms": 2824,
+      "p99_ms": 3756,
+      "per_name_p50_ms": {
+        "complex": 983,
+        "followup_turn1": 1021,
+        "followup_turn2": 913,
+        "simple": 949
+      },
+      "pool_size_max": 3,
+      "pool_idle_min": 2,
+      "pool_max": 10,
+      "acquire_wait_ms": {
+        "n": 677.0,
+        "mean": 0.05542812654005702,
+        "p95": 0.030916999094188213,
+        "p99": 0.034666998544707894,
+        "max": 24.622917000669986
+      },
+      "loop_lag_ms": {
+        "n": 1141.0,
+        "mean": 0.9935947011686478,
+        "p95": 1.846249989466739,
+        "p99": 3.9330419851466987,
+        "max": 22.497250017477196
+      },
+      "server_cpu_pct_mean": 11.2,
+      "server_cpu_pct_max": 14.7,
+      "server_rss_mb_max": 108.6,
+      "locust_cpu_pct_mean": 1.5
+    },
+    {
+      "users": 50,
+      "requests": 384,
+      "rps": 6.4,
+      "error_rate_pct": 0.0,
+      "p50_ms": 6340,
+      "p95_ms": 7967,
+      "p99_ms": 9600,
+      "per_name_p50_ms": {
+        "complex": 6371,
+        "followup_turn1": 6385,
+        "followup_turn2": 6243,
+        "simple": 6355
+      },
+      "pool_size_max": 5,
+      "pool_idle_min": 3,
+      "pool_max": 10,
+      "acquire_wait_ms": {
+        "n": 832.0,
+        "mean": 0.016819377798618425,
+        "p95": 0.030333991162478924,
+        "p99": 0.03995798761025071,
+        "max": 0.06316701183095574
+      },
+      "loop_lag_ms": {
+        "n": 1144.0,
+        "mean": 0.9162396564489443,
+        "p95": 1.6404999943915728,
+        "p99": 4.201791004743424,
+        "max": 23.227125016273927
+      },
+      "server_cpu_pct_mean": 12.6,
+      "server_cpu_pct_max": 17.2,
+      "server_rss_mb_max": 114.8,
+      "locust_cpu_pct_mean": 1.6
+    },
+    {
+      "users": 100,
+      "requests": 361,
+      "rps": 6.02,
+      "error_rate_pct": 0.0,
+      "p50_ms": 12385,
+      "p95_ms": 14457,
+      "p99_ms": 15235,
+      "per_name_p50_ms": {
+        "complex": 12356,
+        "followup_turn1": 11837,
+        "followup_turn2": 12506,
+        "simple": 12517
+      },
+      "pool_size_max": 8,
+      "pool_idle_min": 6,
+      "pool_max": 10,
+      "acquire_wait_ms": {
+        "n": 883.0,
+        "mean": 0.01841420981461353,
+        "p95": 0.031000003218650818,
+        "p99": 0.040332990465685725,
+        "max": 0.06516702705994248
+      },
+      "loop_lag_ms": {
+        "n": 1140.0,
+        "mean": 1.0104687904873673,
+        "p95": 2.7293750201351914,
+        "p99": 5.975249997572971,
+        "max": 13.110666989814487
+      },
+      "server_cpu_pct_mean": 13.9,
+      "server_cpu_pct_max": 18.8,
+      "server_rss_mb_max": 123.3,
+      "locust_cpu_pct_mean": 1.8
+    }
+  ]
+}

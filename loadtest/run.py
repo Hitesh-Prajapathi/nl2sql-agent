@@ -43,7 +43,9 @@ def pct(values: list[float], q: float) -> float:
 
 def git_sha() -> str:
     try:
-        return subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT, text=True).strip()
+        return subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"], cwd=ROOT, text=True
+        ).strip()
     except Exception:
         return "unknown"
 
@@ -53,7 +55,9 @@ def start_server(env: dict[str, str], workers: int) -> subprocess.Popen[bytes]:
         sys.executable, "-m", "uvicorn", "loadtest.server:app",
         "--port", str(PORT), "--workers", str(workers), "--log-level", "warning",
     ]  # fmt: skip
-    proc = subprocess.Popen(cmd, cwd=ROOT, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    proc = subprocess.Popen(
+        cmd, cwd=ROOT, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    )
     for _ in range(60):
         time.sleep(0.5)
         if proc.poll() is not None:
@@ -127,7 +131,9 @@ def sampler(
     out["samples"] = samples
 
 
-def run_level(users: int, ramp: int, steady: int, server: psutil.Process, raw: Path) -> dict[str, Any]:
+def run_level(
+    users: int, ramp: int, steady: int, server: psutil.Process, raw: Path
+) -> dict[str, Any]:
     env = {**os.environ, "LT_RAW": str(raw), "PYTHONPATH": f"{ROOT}/src:{ROOT}"}
     rate = max(1.0, users / ramp)
     cmd = [
@@ -138,7 +144,9 @@ def run_level(users: int, ramp: int, steady: int, server: psutil.Process, raw: P
     if raw.exists():
         raw.unlink()
     t0 = time.time()
-    proc = subprocess.Popen(cmd, cwd=ROOT, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    proc = subprocess.Popen(
+        cmd, cwd=ROOT, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    )
     while not raw.exists() and time.time() - t0 < 30:
         time.sleep(0.2)
     meta = json.loads(raw.read_text().splitlines()[0])["meta"]
@@ -176,22 +184,29 @@ def run_level(users: int, ramp: int, steady: int, server: psutil.Process, raw: P
         "pool_max": last.get("pool", {}).get("max") if last.get("pool") else None,
         "acquire_wait_ms": last.get("acquire_wait_ms"),
         "loop_lag_ms": last.get("loop_lag_ms"),
-        "server_cpu_pct_mean": round(sum(s["server_cpu_pct"] for s in samples) / len(samples), 1) if samples else None,
+        # the lag monitor ticks every ~52 ms; far fewer ticks than expected means the
+        # host was suspended or throttled (e.g. macOS sleep), so the level is invalid
+        "valid": bool(last.get("loop_lag_ms", {}).get("n", 0) >= 0.8 * steady / 0.052),
+        "server_cpu_pct_mean": round(sum(s["server_cpu_pct"] for s in samples) / len(samples), 1)
+        if samples
+        else None,
         "server_cpu_pct_max": round(max((s["server_cpu_pct"] for s in samples), default=0), 1),
         "server_rss_mb_max": round(max((s["server_rss_mb"] for s in samples), default=0), 1),
-        "locust_cpu_pct_mean": round(sum(s["locust_cpu_pct"] for s in samples) / len(samples), 1) if samples else None,
+        "locust_cpu_pct_mean": round(sum(s["locust_cpu_pct"] for s in samples) / len(samples), 1)
+        if samples
+        else None,
     }
 
 
 def md_table(rows: list[dict[str, Any]]) -> str:
     out = [
-        "| Users | RPS | Err % | P50 ms | P95 ms | P99 ms | Pool size/idle-min/max | Acquire wait P95 ms | Loop lag P95 ms | Server CPU % (mean/max) | RSS MB | Locust CPU % |",
-        "|---|---|---|---|---|---|---|---|---|---|---|---|",
+        "| Users | Valid | RPS | Err % | P50 ms | P95 ms | P99 ms | Pool size/idle-min/max | Acquire wait P95 ms | Loop lag P95 ms | Server CPU % (mean/max) | RSS MB | Locust CPU % |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for r in rows:
         aw, ll = r["acquire_wait_ms"] or {}, r["loop_lag_ms"] or {}
         out.append(
-            f"| {r['users']} | {r['rps']} | {r['error_rate_pct']} | {r['p50_ms']} | {r['p95_ms']} | {r['p99_ms']} "
+            f"| {r['users']} | {'yes' if r['valid'] else 'NO (host stalled)'} | {r['rps']} | {r['error_rate_pct']} | {r['p50_ms']} | {r['p95_ms']} | {r['p99_ms']} "
             f"| {r['pool_size_max']}/{r['pool_idle_min']}/{r['pool_max']} | {aw.get('p95', 0):.1f} | {ll.get('p95', 0):.1f} "
             f"| {r['server_cpu_pct_mean']}/{r['server_cpu_pct_max']} | {r['server_rss_mb_max']} | {r['locust_cpu_pct_mean']} |"
         )
@@ -235,7 +250,23 @@ def main() -> None:
         for u in [int(x) for x in args.levels.split(",")]:
             print(f"== {u} users: ramp {args.ramp}s + steady {args.steady}s", flush=True)
             r = run_level(u, args.ramp, args.steady, server_proc, raw)
-            print(json.dumps({k: r[k] for k in ("users", "rps", "error_rate_pct", "p50_ms", "p95_ms", "p99_ms")}), flush=True)
+            print(
+                json.dumps(
+                    {
+                        k: r[k]
+                        for k in (
+                            "users",
+                            "rps",
+                            "error_rate_pct",
+                            "p50_ms",
+                            "p95_ms",
+                            "p99_ms",
+                            "valid",
+                        )
+                    }
+                ),
+                flush=True,
+            )
             results.append(r)
     finally:
         stop(srv)
@@ -262,11 +293,15 @@ def main() -> None:
             "endpoint": "POST /v1/query",
         },
         "fake_latency_ms_lognormal": {
-            "plan_median": lat.plan_median_ms, "plan_p95": lat.plan_p95_ms,
-            "fast_median": lat.fast_median_ms, "fast_p95": lat.fast_p95_ms,
+            "plan_median": lat.plan_median_ms,
+            "plan_p95": lat.plan_p95_ms,
+            "fast_median": lat.fast_median_ms,
+            "fast_p95": lat.fast_p95_ms,
         },  # fmt: skip
     }
-    (ROOT / "results" / f"{stem}.json").write_text(json.dumps({**meta, "levels": results}, indent=2))
+    (ROOT / "results" / f"{stem}.json").write_text(
+        json.dumps({**meta, "levels": results}, indent=2)
+    )
     md = [
         f"# Load test (mock LLM) {today}" + (f" [{args.tag}]" if args.tag else ""),
         "",

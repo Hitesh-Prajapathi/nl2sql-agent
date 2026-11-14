@@ -24,7 +24,7 @@ _COMPLEX = list(COMPLEX)
 _OK_STATUSES = {"answered", "success", "needs_clarification", "clarification"}
 
 
-@events.test_start.add_listener
+@events.test_start.add_listener  # type: ignore[untyped-decorator]
 def _start(environment: Any, **kw: Any) -> None:
     global _fh
     if _RAW:
@@ -32,13 +32,13 @@ def _start(environment: Any, **kw: Any) -> None:
         _fh.write(json.dumps({"meta": {"test_start": time.time()}}) + "\n")
 
 
-@events.test_stop.add_listener
+@events.test_stop.add_listener  # type: ignore[untyped-decorator]
 def _stop(environment: Any, **kw: Any) -> None:
     if _fh:
         _fh.close()
 
 
-@events.request.add_listener
+@events.request.add_listener  # type: ignore[untyped-decorator]
 def _record(
     request_type: str,
     name: str,
@@ -61,7 +61,7 @@ def _record(
         )
 
 
-class QueryUser(HttpUser):  # type: ignore[misc]
+class QueryUser(HttpUser):
     wait_time = between(
         float(os.environ.get("LT_THINK_MIN", "0.2")),
         float(os.environ.get("LT_THINK_MAX", "1.0")),

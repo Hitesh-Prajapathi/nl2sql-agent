@@ -44,7 +44,10 @@ COMPLEX: dict[str, str] = {
 # (turn 1, turn 2): turn 2 reuses the thread_id so the session store is exercised.
 FOLLOWUPS: list[tuple[str, str]] = [
     ("What is the distribution of orders by status?", "Now just show the cancelled ones"),
-    ("What are the 5 most expensive products and their prices?", "What is the average price of those?"),
+    (
+        "What are the 5 most expensive products and their prices?",
+        "What is the average price of those?",
+    ),
     ("How many customers are there in each tier?", "Which of those tiers has the most customers?"),
 ]
 FOLLOWUP_SQL: dict[str, str] = {

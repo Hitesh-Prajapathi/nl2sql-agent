@@ -70,4 +70,5 @@ logs:
 
 # ── Load test (mock LLM; needs Postgres, starts its own uvicorn on :8765) ────
 loadtest:
-	PYTHONPATH=$(PWD)/src:$(PWD) uv run --extra loadtest python loadtest/run.py
+	# caffeinate (macOS) stops host sleep from stalling the measurement
+	PYTHONPATH=$(PWD)/src:$(PWD) $(shell command -v caffeinate >/dev/null && echo "caffeinate -dims") uv run --extra loadtest python loadtest/run.py
