@@ -1,4 +1,4 @@
-.PHONY: bird-setup profile eval report db-harden setup docker-up docker-down docker-logs dev cli ask test test-unit test-safety test-e2e bench redteam-sql lint fmt check logs
+.PHONY: bird-setup profile eval report prompt-size db-harden setup docker-up docker-down docker-logs dev cli ask test test-unit test-safety test-e2e bench redteam-sql lint fmt check logs
 
 # ── Setup ─────────────────────────────────────────────────────────────────────
 setup:
@@ -93,6 +93,11 @@ eval:
 
 report:
 	uv run python scripts/report.py
+
+# Offline (no LLM) prompt-size check over all 500 questions; fails if a *_small variant
+# exceeds its cap.
+prompt-size:
+	uv run python scripts/check_prompt_size.py --variant $(VARIANT)
 
 # ── Multi-worker (shared sessions + multiprocess metrics) ─────────────────────
 # One-time: psql -U postgres -d nl2sql_assignment -f db/app_state.sql

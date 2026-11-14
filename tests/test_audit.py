@@ -21,7 +21,6 @@ def _rec(rid: str) -> AuditRecord:
         blocked_layer=None,
         row_count=1,
         latency_ms=12.5,
-        cost_usd=0.001,
         trace_id="abc",
     )
 
@@ -35,7 +34,6 @@ async def test_write_never_raises_when_db_down(monkeypatch: pytest.MonkeyPatch) 
     assert w.failures == 1
     assert await w.write(_rec("r")) is False  # backoff window: no new connection attempt
     assert w.failures == 1
-    assert await w.spent_today_usd() is None
 
 
 async def test_disabled_is_noop(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -54,7 +52,7 @@ async def test_append_only_roundtrip() -> None:
     w = AuditWriter()
     try:
         assert await w.write(_rec(rid)) is True
-        assert (await w.spent_today_usd() or 0) >= 0.001
+        assert w.failures == 0
     finally:
         await w.close()
 

@@ -3,6 +3,8 @@
 > Source: `01_nl2sql_agent.md` (the refinement brief), extended after a code audit on 2026-11-13.
 > Goal: every claim this repo makes has to be **reproducible from one command, measured on public data, compared against a baseline, and defended by an artifact in `results/`**.
 
+> **Update (Groq free tier).** Runs use `openai/gpt-oss-120b` (planner) and `openai/gpt-oss-20b` (fallback and fast); Llama 3.3 70B is no longer available. Every model is limited to 1,000 requests/day and 8,000 tokens/minute, so benchmarks use the `full_small` / `naive_small` variants (prompt + output capped at 6,500 tokens) with a built-in pacer, and **no model prices or cost are tracked anywhere**: wherever this plan says "cost", read "tokens". `config/pricing.yaml` no longer exists.
+
 ---
 
 ## 0. Ground rules (apply to every phase)

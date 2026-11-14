@@ -50,13 +50,6 @@
       "targets": [{ "expr": "sum by (direction) (rate(nl2sql_llm_tokens_total[1m]))", "legendFormat": "{{direction}}" }]
     },
     {
-      "id": 6, "type": "stat", "title": "Estimated spend (24h, USD)",
-      "gridPos": { "h": 8, "w": 4, "x": 8, "y": 16 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "fieldConfig": { "defaults": { "unit": "currencyUSD" } },
-      "targets": [{ "expr": "sum(increase(nl2sql_cost_usd_total[24h]))" }]
-    },
-    {
       "id": 7, "type": "timeseries", "title": "Node latency p95",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },

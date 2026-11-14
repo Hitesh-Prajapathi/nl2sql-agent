@@ -65,16 +65,6 @@ def shutdown_tracing() -> None:
         _provider.shutdown()
 
 
-def compute_cost(input_tokens: int, output_tokens: int) -> float | None:
-    """USD cost from settings prices; None when prices are not configured."""
-    s = get_settings()
-    if s.price_input_per_1m_usd is None or s.price_output_per_1m_usd is None:
-        return None
-    return (
-        input_tokens * s.price_input_per_1m_usd + output_tokens * s.price_output_per_1m_usd
-    ) / 1_000_000
-
-
 class RequestObserver(BaseCallbackHandler):
     """Per-request callback: token usage, per-node spans/latency and progress events.
 
@@ -107,12 +97,6 @@ class RequestObserver(BaseCallbackHandler):
         self.output_tokens += o
         metrics.TOKENS.labels("input").inc(i)
         metrics.TOKENS.labels("output").inc(o)
-
-    @property
-    def cost_usd(self) -> float | None:
-        if not self.has_usage:
-            return None
-        return compute_cost(self.input_tokens, self.output_tokens)
 
     def on_chain_start(
         self,

@@ -11,7 +11,7 @@ from langchain_core.runnables import RunnableConfig
 from nl2sql.agent.llm import planner_llm
 from nl2sql.agent.state import AgentState
 from nl2sql.db.registry import DatabaseRegistry, UnknownDatabaseError
-from nl2sql.llm.prompts.plan_sql import HINT_TEMPLATE, PLAN_SQL_SYSTEM
+from nl2sql.llm.prompts.plan_sql import build_plan_messages
 from nl2sql.models import PlanResult
 from nl2sql.safety.validator import detect_prompt_injection
 
@@ -39,7 +39,9 @@ async def load_schema_node(state: AgentState, registry: DatabaseRegistry) -> dic
             "final_sql": "",
             "refuse_reason": msg,
         }
-    schema_context = await resources.schema_provider.get_context(state.get("question", ""))
+    schema_context = await resources.schema_provider.get_context(
+        state.get("question", ""), evidence=(state.get("evidence") or "").strip()
+    )
     elapsed_ms = round((time.perf_counter() - t0) * 1000)
     timings = dict(state.get("timings", {}))
     timings["load_schema_ms"] = elapsed_ms
@@ -87,24 +89,14 @@ async def plan_sql_node(state: AgentState, config: RunnableConfig) -> dict[str, 
         followup_block = _build_history_block(history)
 
     evidence = (state.get("evidence") or "").strip()
-    system_prompt = PLAN_SQL_SYSTEM.format(
-        schema_context=state["schema_context"],
-        hint_block=HINT_TEMPLATE.format(evidence=evidence) if evidence else "",
-        followup_block=followup_block,
-    )
+    plan_messages = build_plan_messages(state["schema_context"], question, evidence, followup_block)
 
     llm = planner_llm().with_structured_output(PlanResult, method="json_mode")
 
     try:
         result = cast(
             PlanResult,
-            await llm.ainvoke(
-                [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": question},
-                ],
-                config=config,
-            ),
+            await llm.ainvoke(plan_messages, config=config),
         )
     except Exception as exc:
         elapsed_ms = round((time.perf_counter() - t0) * 1000)

@@ -1,4 +1,10 @@
-"""Async evaluation runner: bounded concurrency, resumable JSONL checkpoint, scoring."""
+"""Async evaluation runner: bounded concurrency, resumable JSONL checkpoint, scoring.
+
+Rate limits: with a ``Pacer`` in the config the runner stops starting questions when the daily
+request budget of the models in ``budget_models`` cannot cover another question (and stops on
+the first question that hits the budget mid-flight). Stopping is clean and resumable: finished
+questions are in the JSONL checkpoint, and rerunning the same command continues from there.
+"""
 
 from __future__ import annotations
 
@@ -25,10 +31,23 @@ from nl2sql.eval.metrics import (
 )
 from nl2sql.eval.sqlrunner import SqlOutcome, SqlRunner
 from nl2sql.eval.variants import Prediction, Variant, is_permanent_llm_error, is_rate_limit
+from nl2sql.llm.pacer import DAILY_MARKER, Pacer
 
 log = structlog.get_logger()
 
 SCORED_STATUSES = ("answered", "needs_clarification", "refused", "failed")
+
+
+class CheckpointMismatch(RuntimeError):
+    """The checkpoint was written by a different configuration (model, prompts, cap, ...)."""
+
+
+@dataclass
+class RunState:
+    """Filled in by ``run_questions`` so the caller can report how the run ended."""
+
+    stopped_reason: str | None = None
+    skipped: int = 0  # questions not started because the run stopped
 
 
 @dataclass
@@ -43,6 +62,13 @@ class RunConfig:
     infra_backoff_s: float = 5.0
     infra_backoff_cap_s: float = 120.0
     extra: dict[str, Any] = field(default_factory=dict)
+    # Daily-budget stop (None = no pacing, e.g. tests and the fake provider)
+    pacer: Pacer | None = None
+    budget_models: tuple[str, ...] = ()
+    calls_per_question: int = 1  # worst-case logical LLM calls one question can make
+    # Identity of this run; a checkpoint written under a different one is refused.
+    fingerprint: dict[str, Any] | None = None
+    state: RunState = field(default_factory=RunState)
 
 
 def load_checkpoint(path: Path | None) -> dict[int, dict[str, Any]]:
@@ -60,6 +86,33 @@ def load_checkpoint(path: Path | None) -> dict[int, dict[str, Any]]:
         if rec.get("status") in SCORED_STATUSES:
             done[int(rec["question_id"])] = rec
     return done
+
+
+def prepare_checkpoint(path: Path | None, fingerprint: dict[str, Any] | None) -> None:
+    """Write the identity header of a new checkpoint; refuse to resume a different configuration."""
+    if path is None or fingerprint is None:
+        return
+    if path.exists() and path.stat().st_size > 0:
+        for line in path.read_text().splitlines():
+            if not line.strip():
+                continue
+            try:
+                head = json.loads(line)
+            except ValueError:
+                break
+            if isinstance(head, dict) and "_meta" in head:
+                old = head["_meta"]
+                keys = set(old) | set(fingerprint)
+                diff = sorted(k for k in keys if old.get(k) != fingerprint.get(k))
+                if diff:
+                    raise CheckpointMismatch(
+                        f"{path} was written with a different configuration (differs in: "
+                        f"{', '.join(diff)}). Delete it (or pass --fresh) to start over."
+                    )
+            break
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"_meta": fingerprint}, default=str) + "\n")
 
 
 async def score_prediction(
@@ -85,6 +138,7 @@ async def score_prediction(
         "attempts_total": 1 + pred.failed_attempts if pred.decision == "sql" else 0,
         "latency_s": round(pred.latency_s, 3),
         "usage": pred.usage,
+        "llm_calls": pred.llm_calls,
         "llm_error": pred.llm_error,
         "agent_error": pred.error,
         "relevant_tables": pred.relevant_tables,
@@ -180,19 +234,48 @@ async def run_questions(
     sleep: Callable[[float], Any] = asyncio.sleep,
 ) -> list[dict[str, Any]]:
     """Run (resuming from the checkpoint) and return one record per question, in input order."""
+    prepare_checkpoint(cfg.checkpoint, cfg.fingerprint)
     done = load_checkpoint(cfg.checkpoint)
     todo = [q for q in questions if q.question_id not in done]
     sem = asyncio.Semaphore(max(1, cfg.concurrency))
     timing_lock = asyncio.Lock()
     write_lock = asyncio.Lock()
     results: dict[int, dict[str, Any]] = {qid: rec for qid, rec in done.items()}
-    counter = {"n": len(done)}
+    counter = {"n": len(done), "inflight": 0}
     total = len(questions)
+    state = cfg.state
+
+    def budget_blocks() -> str | None:
+        if cfg.pacer is None or not cfg.budget_models:
+            return None
+        remaining = min(cfg.pacer.remaining_requests(m) for m in cfg.budget_models)
+        needed = cfg.calls_per_question * counter["inflight"]
+        if remaining < needed:
+            return (
+                f"daily request budget nearly exhausted ({remaining} requests left for "
+                f"{', '.join(cfg.budget_models)}; {needed} needed for the questions in flight)"
+            )
+        return None
 
     async def one(q: Question) -> None:
         async with sem:
-            pred = await _predict_with_retry(variant, q, cfg, sleep)
-            rec = await score_prediction(q, pred, sql_runner, table_columns, cfg, timing_lock)
+            if state.stopped_reason is not None:
+                state.skipped += 1
+                return
+            counter["inflight"] += 1
+            try:
+                if (why := budget_blocks()) is not None:
+                    state.stopped_reason = why
+                    state.skipped += 1
+                    return
+                pred = await _predict_with_retry(variant, q, cfg, sleep)
+                if pred.status == "infra_error" and DAILY_MARKER in pred.llm_error.lower():
+                    state.stopped_reason = state.stopped_reason or pred.llm_error[:200]
+                    state.skipped += 1  # not finished: the resume reruns it
+                    return
+                rec = await score_prediction(q, pred, sql_runner, table_columns, cfg, timing_lock)
+            finally:
+                counter["inflight"] -= 1
         results[q.question_id] = rec
         async with write_lock:
             counter["n"] += 1
@@ -221,7 +304,11 @@ async def _predict_with_retry(
     """
     pred = await variant.predict(q, cfg.use_evidence)
     for n in range(cfg.max_infra_retries):
-        if pred.status != "infra_error" or is_permanent_llm_error(pred.llm_error):
+        if (
+            pred.status != "infra_error"
+            or is_permanent_llm_error(pred.llm_error)
+            or DAILY_MARKER in pred.llm_error.lower()
+        ):
             break
         text = pred.llm_error
         base = cfg.infra_backoff_s * (4 if is_rate_limit(text) else 1)

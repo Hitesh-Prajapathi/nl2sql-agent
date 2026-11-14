@@ -18,7 +18,6 @@ from nl2sql.eval.metrics import (
     ves_score,
     ves_time_ratio,
 )
-from nl2sql.eval.pricing import compute_cost
 from nl2sql.eval.stats import bootstrap_ci, paired_bootstrap_diff, percentile
 from nl2sql.eval.summary import summarize
 
@@ -242,7 +241,7 @@ def test_summary_counts_non_answers_as_wrong_and_excludes_infra() -> None:
     assert s["r_ves"]["value"] == 20.0
 
 
-def test_summary_retry_recovery_and_tokens_and_cost() -> None:
+def test_summary_retry_recovery_and_tokens_without_cost() -> None:
     usage = {
         "plan_sql": {
             "m": {"calls": 1, "cached_calls": 0, "input_tokens": 1000, "output_tokens": 100}
@@ -252,16 +251,40 @@ def test_summary_retry_recovery_and_tokens_and_cost() -> None:
         _rec(question_id=1, failed_attempts=1, attempts_total=2, usage=usage),
         _rec(question_id=2, usage=usage),
     ]
-    s = summarize(recs, {"models": {"m": {"input_per_1m_usd": 2.0, "output_per_1m_usd": 10.0}}})
+    s = summarize(recs)
     assert s["retry_recovery"]["rate"] == 1.0
     assert s["tokens_by_node"]["plan_sql"]["m"]["input_tokens"] == 2000
     assert s["tokens_total"]["output"] == 200
-    assert s["cost_usd"] == pytest.approx((2000 * 2 + 200 * 10) / 1e6)
+    assert "cost_usd" not in s and "cost_note" not in s
     assert s["latency_s"]["p50"] == 1.0
 
 
-def test_cost_is_none_when_price_missing() -> None:
-    usage = {"n": {"m": {"calls": 1, "cached_calls": 0, "input_tokens": 5, "output_tokens": 5}}}
-    total, missing = compute_cost(usage, {"models": {"m": {"input_per_1m_usd": None}}})
-    assert total is None and missing == ["m"]
-    assert compute_cost({}, {})[0] == 0.0
+def test_model_usage_splits_planner_and_fallback_and_books_tokens_to_the_answering_model() -> None:
+    def call(model: str, leg: str, i: int, o: int) -> dict[str, Any]:
+        return {
+            "node": "plan_sql",
+            "role": "planner",
+            "leg": leg,
+            "model": model,
+            "input_tokens": i,
+            "output_tokens": o,
+            "cached": False,
+        }
+
+    recs = [
+        _rec(question_id=1, llm_calls=[call("big", "primary", 1000, 100)]),
+        _rec(
+            question_id=2,
+            llm_calls=[call("small", "fallback", 800, 50), call("big", "primary", 500, 20)],
+        ),
+    ]
+    mu = summarize(recs)["model_usage"]
+    assert mu["by_model"]["big"]["input_tokens"] == 1500 and mu["by_model"]["big"]["calls"] == 2
+    assert mu["by_model"]["small"] == {
+        "calls": 1,
+        "cached_calls": 0,
+        "input_tokens": 800,
+        "output_tokens": 50,
+    }
+    assert mu["calls_by_role_and_leg"]["planner"] == {"primary": 2, "fallback": 1}
+    assert mu["fallback_calls"] == 1 and mu["fallback_share"] == pytest.approx(1 / 3, abs=1e-3)

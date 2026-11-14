@@ -40,9 +40,6 @@ class NullAudit(AuditWriter):
         self.records.append(rec)
         return True
 
-    async def spent_today_usd(self) -> float | None:
-        return None
-
 
 @pytest.fixture
 def audit() -> NullAudit:
@@ -90,6 +87,21 @@ def test_query_and_v1_alias(make_client: Any, fake_llm: FakeLLMScript) -> None:
         body = r.json()
         assert body["status"] == "answered" and body["request_id"]
         assert r.headers["x-request-id"] == body["request_id"]
+
+
+def test_unknown_database_fails_without_llm_call(make_client: Any, fake_llm: FakeLLMScript) -> None:
+    c = make_client()
+    r = c.post("/v1/query", json={"question": "q", "database": "no_such_db"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "failed" and "no_such_db" in (body["answer"] or "")
+    assert fake_llm.count("plan") == 0
+
+
+def test_known_database_field_is_accepted(make_client: Any, fake_llm: FakeLLMScript) -> None:
+    fake_llm.plan(sql_plan(GOOD_SQL))
+    r = make_client().post("/v1/query", json={"question": "q", "database": "default"})
+    assert r.json()["status"] == "answered"
 
 
 def test_request_id_echoed(make_client: Any) -> None:
@@ -194,29 +206,12 @@ def test_cors_allowlist(make_client: Any, monkeypatch: pytest.MonkeyPatch) -> No
     assert "access-control-allow-origin" not in bad.headers
 
 
-def test_cost_recorded_and_spend_cap(
-    make_client: Any, fake_llm: FakeLLMScript, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    s = get_settings()
-    monkeypatch.setattr(s, "price_input_per_1m_usd", 1.0)
-    monkeypatch.setattr(s, "price_output_per_1m_usd", 2.0)
-    monkeypatch.setattr(s, "daily_spend_cap_usd", 0.0000025)
-    fake_llm.usage = (1000, 1000)  # per LLM call that reports usage
-    fake_llm.plan(sql_plan(GOOD_SQL))
-    c = make_client(BIG)
-    r = c.post("/v1/query", json={"question": "q"})
-    assert r.status_code == 200
-    body = r.json()
-    assert body["input_tokens"] and body["cost_usd"] and body["cost_usd"] > 0
-    again = c.post("/v1/query", json={"question": "q"})
-    assert again.status_code == 503 and again.json()["error"]["code"] == "daily_cap"
-
-
-def test_cost_none_without_prices(make_client: Any, fake_llm: FakeLLMScript) -> None:
+def test_token_usage_reported_without_cost(make_client: Any, fake_llm: FakeLLMScript) -> None:
     fake_llm.usage = (5, 5)
     fake_llm.plan(sql_plan(GOOD_SQL))
     body = make_client(BIG).post("/v1/query", json={"question": "q"}).json()
-    assert body["cost_usd"] is None and body["input_tokens"] == 5
+    assert body["input_tokens"] == 5 and body["output_tokens"] == 5
+    assert "cost_usd" not in body
 
 
 def test_kill_switch(make_client: Any, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -300,7 +295,6 @@ def test_metrics_endpoint(make_client: Any, fake_llm: FakeLLMScript) -> None:
         "nl2sql_blocks_total",
         "nl2sql_llm_retries_total",
         "nl2sql_llm_tokens_total",
-        "nl2sql_cost_usd_total",
         "nl2sql_node_latency_seconds",
     ):
         assert name in text

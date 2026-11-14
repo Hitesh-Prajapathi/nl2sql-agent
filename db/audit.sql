@@ -31,7 +31,6 @@ CREATE TABLE IF NOT EXISTS audit.query_log (
     blocked_layer   text,
     row_count       integer,
     latency_ms      double precision,
-    cost_usd        double precision,
     trace_id        text
 );
 
@@ -59,5 +58,3 @@ REVOKE ALL ON audit.query_log FROM PUBLIC;
 GRANT CONNECT ON DATABASE nl2sql_assignment TO audit_writer;
 GRANT USAGE ON SCHEMA audit TO audit_writer;
 GRANT INSERT ON audit.query_log TO audit_writer;
--- SELECT on ts/cost only, so the spend guard can read today's total (no SQL text).
-GRANT SELECT (ts, cost_usd) ON audit.query_log TO audit_writer;

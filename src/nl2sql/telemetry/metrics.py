@@ -59,7 +59,6 @@ LLM_BREAKER_OPEN = Gauge(
     multiprocess_mode="livemax",
 )
 TOKENS = Counter("nl2sql_llm_tokens_total", "LLM tokens", ["direction"])
-COST = Counter("nl2sql_cost_usd_total", "Estimated LLM spend in USD")
 NODE_LATENCY = Histogram(
     "nl2sql_node_latency_seconds",
     "Graph node latency",
