@@ -291,6 +291,12 @@ async def run_questions(
     return [results[q.question_id] for q in questions if q.question_id in results]
 
 
+def _daily_429_pending(cfg: RunConfig) -> bool:
+    if cfg.pacer is None:
+        return False
+    return any(cfg.pacer.daily_strikes(m) > 0 for m in cfg.budget_models)
+
+
 async def _predict_with_retry(
     variant: Variant,
     q: Question,
@@ -303,7 +309,8 @@ async def _predict_with_retry(
     times itself; only the final attempt's latency is kept).
     """
     pred = await variant.predict(q, cfg.use_evidence)
-    for n in range(cfg.max_infra_retries):
+    n = 0
+    while n < cfg.max_infra_retries:
         if (
             pred.status != "infra_error"
             or is_permanent_llm_error(pred.llm_error)
@@ -311,6 +318,12 @@ async def _predict_with_retry(
         ):
             break
         text = pred.llm_error
+        if _daily_429_pending(cfg):
+            # The pacer is backing off after a daily 429 (it sleeps in ``acquire``); retry the
+            # SAME question without spending a retry until it succeeds or the pacer gives up.
+            log.warning("eval_daily_429_retry", question_id=q.question_id, error=text[:120])
+            pred = await variant.predict(q, cfg.use_evidence)
+            continue
         base = cfg.infra_backoff_s * (4 if is_rate_limit(text) else 1)
         delay = min(cfg.infra_backoff_cap_s, base * 2**n)
         delay = random.uniform(delay / 2, delay)  # noqa: S311 - jitter, not crypto
@@ -323,4 +336,5 @@ async def _predict_with_retry(
         )
         await sleep(delay)
         pred = await variant.predict(q, cfg.use_evidence)
+        n += 1
     return pred
