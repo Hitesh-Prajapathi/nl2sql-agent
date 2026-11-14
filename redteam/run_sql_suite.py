@@ -51,6 +51,11 @@ HERE = Path(__file__).resolve().parent
 DSN = os.environ.get(
     "NL2SQL_REDTEAM_DSN",
     "postgresql://nl2sql_reader:reader_pass@localhost:5432/nl2sql_assignment",
+)  # Superuser connection used ONLY for the write-canary and setup probes (never for payloads),
+# so DB hardening can revoke functions such as has_sequence_privilege from nl2sql_reader.
+ADMIN_DSN = os.environ.get(
+    "NL2SQL_REDTEAM_ADMIN_DSN",
+    "postgresql://postgres:postgres@localhost:5432/nl2sql_assignment",
 )
 
 # Frozen copy of the ORIGINAL (v1) injection regexes so that v1 vs v2 can always be
@@ -275,7 +280,7 @@ def main() -> int:
         p["static"] = static(p["sql"])
 
     # ---- benign -----------------------------------------------------------
-    sconn = connect()
+    sconn = psycopg.connect(ADMIN_DSN, autocommit=True, application_name="redteam_canary")
     tables = public_tables(sconn)
     seq_row = sconn.execute(
         "SELECT bool_or(has_sequence_privilege(c.oid,'USAGE') "
