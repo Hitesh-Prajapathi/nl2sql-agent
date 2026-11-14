@@ -234,6 +234,12 @@ def run(
     no_pacing: bool = typer.Option(
         False, "--no-pacing", help="disable the token-bucket / daily-budget pacer"
     ),
+    reset_usage: bool = typer.Option(
+        False, "--reset-usage", help="clear today's 'exhausted' flag in the usage file first"
+    ),
+    daily_429_limit: int = typer.Option(
+        4, "--daily-429-limit", help="consecutive daily (TPD/RPD) 429s before stopping the run"
+    ),
     fresh: bool = typer.Option(False, "--fresh", help="delete the checkpoint and start over"),
     concurrency: int = typer.Option(4),
     ves_repeats: int = typer.Option(3, help="timing repeats for R-VES (official uses 100)"),
@@ -282,7 +288,15 @@ def run(
 
     pacer: Pacer | None = None
     if s.llm_provider == "groq" and s.llm_pacing_enabled and not no_pacing:
-        pacer = Pacer(tpm=s.llm_tpm_limit, rpd=s.llm_rpd_limit, state_path=usage_file)
+        pacer = Pacer(
+            tpm=s.llm_tpm_limit,
+            rpd=s.llm_rpd_limit,
+            state_path=usage_file,
+            daily_max_strikes=daily_429_limit,
+        )
+        if reset_usage:
+            cleared = pacer.reset_exhausted()
+            typer.echo(f"--reset-usage: cleared exhausted state for {cleared or 'no models'}")
     set_pacer(pacer)  # also disables the lazy in-memory pacer when --no-pacing
 
     async def go() -> dict[str, Any]:
@@ -438,7 +452,7 @@ def run(
             f"STOPPED (resumable): {fl['stopped_reason']}\n"
             f"{fl['remaining_questions']} of {len(questions)} questions remain. The daily limit "
             f"resets at 00:00 UTC (in {hours:.1f} h); rerun the SAME command to continue from "
-            f"{cp}."
+            f"{cp} (add --reset-usage to clear the stop flag sooner)."
         )
     elif fl["remaining_questions"]:
         typer.echo(

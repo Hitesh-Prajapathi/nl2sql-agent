@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -78,7 +79,11 @@ def test_parse_rate_limit_minute_vs_daily() -> None:
     )
     assert daily.daily
     huge = parse_rate_limit(RateLimited("slow down", {"retry-after": "40000"}))
-    assert huge.daily  # an absurd wait is the daily limit, not something to sleep through
+    # Only an explicit per-day phrase makes a 429 daily; long waits and "daily" alone do not.
+    assert not huge.daily
+    assert not parse_rate_limit(RateLimited("daily traffic is high")).daily
+    for phrase in ("tokens per day", "(TPD)", "requests per day", "(RPD)", "per day"):
+        assert parse_rate_limit(RateLimited(f"Rate limit reached: {phrase}")).daily
     assert parse_rate_limit(RuntimeError("no response")).retry_after_s is None
 
 
@@ -136,13 +141,115 @@ async def test_rate_limit_sets_shared_cooldown() -> None:
     assert sum(c.sleeps) >= 9
 
 
-async def test_daily_429_marks_model_exhausted() -> None:
+TPM_MSG = "Rate limit reached for model on tokens per minute (TPM): Limit 8000"
+TPD_MSG = "Rate limit reached for model on tokens per day (TPD): Limit 200000, Used 199900"
+
+
+def test_tpm_429_with_long_reset_requests_header_is_not_daily() -> None:
     c = Clock()
     p = make_pacer(c, rpd=1000)
-    p.note_rate_limited("m", RateLimited("Rate limit reached: requests per day (RPD)"))
+    info = p.note_rate_limited(
+        "m",
+        RateLimited(TPM_MSG, {"retry-after": "7", "x-ratelimit-reset-requests": "23h59m0s"}),
+    )
+    assert not info.daily
+    assert p.remaining_requests("m") == 1000 and p.daily_strikes("m") == 0
+
+
+async def test_single_daily_429_backs_off_and_does_not_exhaust() -> None:
+    c = Clock()
+    p = make_pacer(c, rpd=1000)
+    info = p.note_rate_limited("m", RateLimited(TPD_MSG))
+    assert info.daily and p.daily_strikes("m") == 1
+    assert p.remaining_requests("m") == 1000  # not exhausted by one 429
+    await p.acquire("m", 10)
+    assert sum(c.sleeps) >= 300  # first step of the 5/10/20/30 min schedule
+
+
+async def test_daily_429_honours_retry_after_then_escalates() -> None:
+    c = Clock()
+    p = make_pacer(c, rpd=1000)
+    p.note_rate_limited("m", RateLimited(TPD_MSG, {"retry-after": "42"}))
+    await p.acquire("m", 10)
+    assert 42 <= sum(c.sleeps) < 60
+    for want in (600, 1200, 1800):
+        p.note_rate_limited("m", RateLimited(TPD_MSG))
+        before = c.t
+        await p.acquire("m", 10)
+        assert want <= c.t - before < want + 5
+
+
+async def test_daily_429s_exhaust_after_span_and_success_resets() -> None:
+    c = Clock()
+    p = make_pacer(c, rpd=1000)
+    for _ in range(4):  # 4 strikes within ~35 min: below an hour, keep backing off
+        p.note_rate_limited("m", RateLimited(TPD_MSG))
+        await p.acquire("m", 10)
+    assert p.remaining_requests("m") > 0 and p.daily_strikes("m") == 4
+    p.settle("m", 10, 10)  # a success resets the counter
+    assert p.daily_strikes("m") == 0
+    for _ in range(4):
+        p.note_rate_limited("m", RateLimited(TPD_MSG))
+        await p.acquire("m", 10)
+    p.note_rate_limited("m", RateLimited(TPD_MSG))  # 5th: >= 4 strikes spanning > 1 h
     with pytest.raises(DailyBudgetExhausted):
         await p.acquire("m", 10)
+
+
+async def test_n_daily_429s_stop_when_no_span_is_required() -> None:
+    c = Clock()
+    p = make_pacer(c, daily_max_strikes=4, daily_min_span_s=0)
+    for _ in range(3):
+        p.note_rate_limited("m", RateLimited(TPD_MSG))
+        await p.acquire("m", 10)
+    p.note_rate_limited("m", RateLimited(TPD_MSG))
+    with pytest.raises(DailyBudgetExhausted):
+        await p.acquire("m", 10)
+
+
+def test_429_is_logged_and_last_message_persisted(tmp_path: Path) -> None:
+    from structlog.testing import capture_logs
+
+    c = Clock()
+    path = tmp_path / "u.json"
+    p = make_pacer(c, state_path=path)
+    msg = "Rate limit gsk_abcdefgh12345678 " + "x" * 800
+    hdrs = {"retry-after": "3", "x-ratelimit-limit-tokens": "8000", "a": "b"}
+    with capture_logs() as logs:
+        p.note_rate_limited("m", RateLimited(msg, hdrs))
+    ev = next(e for e in logs if e["event"] == "llm_rate_limited")
+    assert ev["log_level"] == "warning" and ev["model"] == "m"
+    assert ev["headers"] == {"retry-after": "3", "x-ratelimit-limit-tokens": "8000"}
+    assert len(ev["message"]) <= 500 and "gsk_abcdefgh" not in ev["message"]
+    entry = json.loads(path.read_text())["models"]["m"]
+    assert entry["last_429_message"] == ev["message"]
+
+
+def test_stale_exhausted_state_is_cleared_on_restart(tmp_path: Path) -> None:
+    c = Clock()
+    path = tmp_path / "u.json"
+    old = (c.now() - timedelta(hours=3)).isoformat()
+    base = {"requests": 5, "rate_limited": 1, "exhausted": True}
+    models = {
+        "legacy": {"requests": 62, "rate_limited": 1, "exhausted": True},  # no timestamp
+        "stale": {**base, "exhausted_at": old},
+        "fresh": {**base, "exhausted_at": c.now().isoformat()},
+    }
+    path.write_text(json.dumps({"date": c.now().strftime("%Y-%m-%d"), "models": models}))
+    p = make_pacer(c, state_path=path)
+    assert p.remaining_requests("legacy") > 0 and p.remaining_requests("stale") > 0
+    assert p.remaining_requests("fresh") == 0  # recent: still honoured
+
+
+def test_reset_exhausted_clears_todays_flag(tmp_path: Path) -> None:
+    c = Clock()
+    path = tmp_path / "u.json"
+    p = make_pacer(c, state_path=path, daily_max_strikes=1, daily_min_span_s=0)
+    p.note_rate_limited("m", RateLimited(TPD_MSG))
     assert p.remaining_requests("m") == 0
+    assert make_pacer(c, state_path=path).remaining_requests("m") == 0  # fresh flag survives
+    assert make_pacer(c, state_path=path).reset_exhausted() == ["m"]
+    assert make_pacer(c, state_path=path).remaining_requests("m") > 0
 
 
 # ── integration with the resilience layer ────────────────────────────────────

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -18,7 +19,7 @@ from nl2sql.eval.runner import (
     run_questions,
 )
 from nl2sql.eval.variants import NaiveVariant, Prediction
-from nl2sql.llm.pacer import DAILY_MARKER, Pacer
+from nl2sql.llm.pacer import DAILY_MARKER, DailyBudgetExhausted, Pacer
 from tests.test_eval_runner import GOLD_A, TABLE_COLUMNS, MemSql
 
 QS = [
@@ -188,3 +189,141 @@ async def test_naive_small_cuts_the_ddl_to_the_budget(fake_llm: Any, tmp_path: P
     system = captured[0]
     assert 'CREATE TABLE "tbl7"' in system and '"col3"' in system
     assert 'CREATE TABLE "tbl19"' not in system  # unrelated tables are cut to stay under the cap
+
+
+# ── daily (TPD/RPD) 429 handling in the runner ───────────────────────────────
+
+TPD = "Rate limit reached for model on tokens per day (TPD): Limit 200000"
+
+
+class _Resp:
+    headers: dict[str, str] = {}
+
+
+class _Err(Exception):
+    status_code = 429
+
+    def __init__(self, msg: str) -> None:
+        super().__init__(msg)
+        self.response = _Resp()
+
+
+def _clocked_pacer(**kw: Any) -> tuple[Pacer, list[float]]:
+    t = [0.0]
+    slept: list[float] = []
+
+    async def sleep(s: float) -> None:
+        slept.append(s)
+        t[0] += s
+
+    p = Pacer(
+        rpd=1000,
+        rpd_margin=0,
+        clock=lambda: t[0],
+        utcnow=lambda: datetime(2026, 11, 14, 10, tzinfo=UTC) + timedelta(seconds=t[0]),
+        sleep=sleep,
+        **kw,
+    )
+    return p, slept
+
+
+class Hit429:
+    """Calls the pacer like the LLM layer does; the first ``fail`` calls get a daily 429."""
+
+    name = "hit429"
+
+    def __init__(self, pacer: Pacer, fail: int) -> None:
+        self.pacer, self.fail = pacer, fail
+        self.calls: list[int] = []
+
+    async def predict(self, q: Question, use_evidence: bool) -> Prediction:
+        self.calls.append(q.question_id)
+        try:
+            await self.pacer.acquire("m", 1)
+        except DailyBudgetExhausted as exc:
+            return Prediction(status="infra_error", llm_error=str(exc))
+        if self.fail > 0:
+            self.fail -= 1
+            self.pacer.note_rate_limited("m", _Err(TPD))
+            return Prediction(status="infra_error", llm_error="429 " + TPD)
+        self.pacer.settle("m", 1, 1)
+        return Prediction(status="answered", sql=GOLD_A, decision="sql")
+
+
+async def _noop_sleep(_s: float) -> None:
+    return None
+
+
+async def test_one_daily_429_then_success_continues_the_run(tmp_path: Path) -> None:
+    pacer, slept = _clocked_pacer()
+    state = RunState()
+    cfg = RunConfig(
+        checkpoint=tmp_path / "r.jsonl",
+        ves_repeats=0,
+        concurrency=1,
+        pacer=pacer,
+        budget_models=("m",),
+        state=state,
+    )
+    v = Hit429(pacer, fail=1)
+    recs = await run_questions(QS, v, MemSql(), TABLE_COLUMNS, cfg, sleep=_noop_sleep)
+    assert len(recs) == len(QS) and state.stopped_reason is None
+    assert v.calls[:2] == [1, 1]  # the SAME question was retried
+    assert any(s >= 300 for s in slept)  # waited on the mocked clock, never for real
+    assert pacer.daily_strikes("m") == 0
+
+
+async def test_consecutive_daily_429s_stop_the_run_as_resumable(tmp_path: Path) -> None:
+    pacer, _ = _clocked_pacer(daily_max_strikes=4, daily_min_span_s=0)
+    state = RunState()
+    cfg = RunConfig(
+        checkpoint=tmp_path / "r.jsonl",
+        ves_repeats=0,
+        concurrency=1,
+        pacer=pacer,
+        budget_models=("m",),
+        state=state,
+    )
+    v = Hit429(pacer, fail=100)
+    await run_questions(QS, v, MemSql(), TABLE_COLUMNS, cfg, sleep=_noop_sleep)
+    assert state.stopped_reason and "daily request budget" in state.stopped_reason
+    assert v.calls[:5] == [1, 1, 1, 1, 1]  # 4 strikes on question 1, then the stop
+    assert not load_checkpoint(cfg.checkpoint)  # nothing recorded as done: resumable
+    assert state.skipped == len(QS)
+
+
+def test_cli_reset_usage_clears_exhausted(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import json
+    from types import SimpleNamespace
+
+    from typer.testing import CliRunner
+
+    from nl2sql.eval import cli as cli_mod
+
+    usage = tmp_path / "u.json"
+    now = datetime.now(UTC)
+    entry = {"requests": 3, "rate_limited": 1, "exhausted": True, "exhausted_at": now.isoformat()}
+    usage.write_text(json.dumps({"date": now.strftime("%Y-%m-%d"), "models": {"m": entry}}))
+    assert Pacer(state_path=usage).remaining_requests("m") == 0
+
+    fake_settings = SimpleNamespace(
+        llm_provider="groq",
+        llm_pacing_enabled=True,
+        llm_tpm_limit=8000,
+        llm_rpd_limit=1000,
+        bird_data_dir=str(tmp_path),
+        profile_dir=str(tmp_path),
+        planner_model="m",
+    )
+    monkeypatch.setattr(cli_mod, "get_settings", lambda: fake_settings)
+    monkeypatch.setattr(cli_mod, "load_questions", lambda *a, **k: QS)
+    monkeypatch.setattr(cli_mod, "load_table_columns", lambda *a, **k: {})
+
+    def stop(*a: Any, **k: Any) -> None:
+        raise RuntimeError("stop after the pacer is set up")
+
+    monkeypatch.setattr(cli_mod.DatabaseRegistry, "for_bird", stop)
+    args = ["run", "--reset-usage", "--usage-file", str(usage), "--out-dir", str(tmp_path)]
+    out = CliRunner().invoke(cli_mod.app, args)
+    assert "--reset-usage: cleared exhausted state for ['m']" in out.output
+    assert json.loads(usage.read_text())["models"]["m"]["exhausted"] is False
