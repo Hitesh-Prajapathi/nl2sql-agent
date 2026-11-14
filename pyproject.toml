@@ -25,6 +25,7 @@ dependencies = [
     "opentelemetry-api>=1.27",
     "opentelemetry-sdk>=1.27",
     "opentelemetry-exporter-otlp-proto-http>=1.27",
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]
@@ -70,6 +71,8 @@ select = ["E", "F", "I", "UP", "B", "ASYNC", "S", "SIM"]
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101"]
 "benchmarks/**" = ["S310", "T201"]
+"src/nl2sql/eval/cli.py" = ["B008"]  # typer idiom: Option() in defaults
+"scripts/**" = ["S101", "S603", "S607", "S310", "S404"]
 # long natural-language strings (golden questions, LLM prompt text) are data, not code
 "benchmarks/golden_set.py" = ["E501"]
 "src/nl2sql/llm/prompts/*.py" = ["E501"]

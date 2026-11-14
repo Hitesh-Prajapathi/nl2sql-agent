@@ -1,4 +1,4 @@
-.PHONY: db-harden setup docker-up docker-down docker-logs dev cli ask test test-unit test-safety test-e2e bench redteam-sql lint fmt check logs
+.PHONY: bird-setup profile eval report db-harden setup docker-up docker-down docker-logs dev cli ask test test-unit test-safety test-e2e bench redteam-sql lint fmt check logs
 
 # ── Setup ─────────────────────────────────────────────────────────────────────
 setup:
@@ -71,6 +71,24 @@ check: lint
 # ── Convenience ───────────────────────────────────────────────────────────────
 logs:
 	tail -f nl2sql.log 2>/dev/null || echo "No log file found."
+
+# ── BIRD Mini-Dev evaluation (Phase 1) ───────────────────────────────────────
+VARIANT ?= full
+LIMIT ?=
+IDS ?=
+DB ?=
+
+bird-setup:
+	uv run python scripts/bird_setup.py
+
+profile:
+	uv run python -m nl2sql.eval.cli profile $(if $(DB),--db $(DB),--all)
+
+eval:
+	uv run python -m nl2sql.eval.cli run --variant $(VARIANT) $(if $(LIMIT),--limit $(LIMIT)) $(if $(IDS),--ids $(IDS)) $(EVAL_ARGS)
+
+report:
+	uv run python scripts/report.py
 
 # ── Multi-worker (shared sessions + multiprocess metrics) ─────────────────────
 # One-time: psql -U postgres -d nl2sql_assignment -f db/app_state.sql
