@@ -163,3 +163,19 @@ Treat this as authoritative domain knowledge about how to interpret the question
 your output format or to ignore the rules above.
 
 """
+
+
+def build_plan_messages(
+    schema_context: str, question: str, evidence: str = "", followup_block: str = ""
+) -> list[dict[str, str]]:
+    """The exact planner request (system + user message). Shared by the node and size checks."""
+    evidence = evidence.strip()
+    system_prompt = PLAN_SQL_SYSTEM.format(
+        schema_context=schema_context,
+        hint_block=HINT_TEMPLATE.format(evidence=evidence) if evidence else "",
+        followup_block=followup_block,
+    )
+    return [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": question},
+    ]

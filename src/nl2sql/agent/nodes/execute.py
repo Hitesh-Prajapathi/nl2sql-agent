@@ -16,6 +16,10 @@ from nl2sql.llm.prompts.plan_sql import CORRECTION_SYSTEM
 from nl2sql.models import ExecutionResult
 from nl2sql.safety.validator import validate_sql
 
+# Bounds on what the correction prompt repeats, so its size stays predictable (token-limited tiers).
+MAX_CORRECTION_SQL_CHARS = 2000
+MAX_CORRECTION_ERROR_CHARS = 600
+
 log = structlog.get_logger()
 settings = get_settings()
 
@@ -178,8 +182,8 @@ async def correct_sql_node(state: AgentState, config: RunnableConfig) -> dict[st
     correction_instruction = CORRECTION_INSTRUCTIONS[error_class]
     system_prompt = CORRECTION_SYSTEM.format(
         question=state["question"],
-        failed_sql=state.get("generated_sql", ""),
-        error=error,
+        failed_sql=state.get("generated_sql", "")[:MAX_CORRECTION_SQL_CHARS],
+        error=error[:MAX_CORRECTION_ERROR_CHARS],
         correction_instruction=correction_instruction,
         schema_context=state["schema_context"],
     )

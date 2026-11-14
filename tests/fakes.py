@@ -35,7 +35,7 @@ class StubSchemaProvider(SchemaProvider):
         self.context = context
         self.calls = 0
 
-    async def get_context(self, question: str = "") -> str:
+    async def get_context(self, question: str = "", evidence: str = "") -> str:
         self.calls += 1
         return self.context
 

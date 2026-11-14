@@ -17,7 +17,7 @@ class SchemaProvider(ABC):
     """Interface — swap FullSchemaProvider for RetrievalSchemaProvider for 200+ tables."""
 
     @abstractmethod
-    async def get_context(self, question: str = "") -> str: ...
+    async def get_context(self, question: str = "", evidence: str = "") -> str: ...
 
 
 class FullSchemaProvider(SchemaProvider):
@@ -34,7 +34,7 @@ class FullSchemaProvider(SchemaProvider):
         self._cache_hash: str | None = None
         self._built_at: float = 0.0
 
-    async def get_context(self, question: str = "") -> str:
+    async def get_context(self, question: str = "", evidence: str = "") -> str:
         current_hash = await get_catalog_hash(self._pool)
         settings = get_settings()
         is_expired = (time.time() - self._built_at) > settings.schema_cache_ttl_seconds

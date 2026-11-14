@@ -72,5 +72,5 @@ class StoredProfileSchemaProvider(SchemaProvider):
     def data(self) -> dict[str, Any]:
         return self._data
 
-    async def get_context(self, question: str = "") -> str:
+    async def get_context(self, question: str = "", evidence: str = "") -> str:
         return self._context

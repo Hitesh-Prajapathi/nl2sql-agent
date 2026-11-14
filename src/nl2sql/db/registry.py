@@ -24,6 +24,7 @@ import structlog
 
 from nl2sql.config import get_settings
 from nl2sql.db.connection import create_pool, get_pool
+from nl2sql.schema.capped import CappedProfileSchemaProvider
 from nl2sql.schema.profile import DatabaseProfile
 from nl2sql.schema.provider import FullSchemaProvider, SchemaProvider
 from nl2sql.schema.store import StoredProfileSchemaProvider, profile_path
@@ -97,8 +98,13 @@ class DatabaseRegistry:
         statement_timeout_ms: int | None = None,
         use_stored_profile: bool = True,
         profile_dir: str | Path | None = None,
+        prompt_cap_tokens: int | None = None,
     ) -> None:
-        """Register a lazily-created pool for ``dsn`` (created on first use)."""
+        """Register a lazily-created pool for ``dsn`` (created on first use).
+
+        With ``prompt_cap_tokens`` the stored profile is served question-aware under that total
+        request cap (``schema.capped``) instead of whole.
+        """
         size = max_size or get_settings().registry_pool_max_size
 
         async def _factory() -> asyncpg.Pool:
@@ -111,9 +117,13 @@ class DatabaseRegistry:
             )
 
         stored = profile_path(db_id, profile_dir) if use_stored_profile else None
+        provider: SchemaProvider | None = None
+        if prompt_cap_tokens and stored and stored.exists():
+            provider = CappedProfileSchemaProvider.from_capped_file(stored, prompt_cap_tokens)
         self.register(
             db_id,
             pool_factory=_factory,
+            schema_provider=provider,
             stored_profile_file=stored if stored and stored.exists() else None,
         )
 
@@ -146,6 +156,7 @@ class DatabaseRegistry:
         max_size: int | None = None,
         url_template: str | None = None,
         use_stored_profiles: bool = True,
+        prompt_cap_tokens: int | None = None,
     ) -> DatabaseRegistry:
         s = get_settings()
         template = url_template or s.bird_database_url_template
@@ -159,6 +170,7 @@ class DatabaseRegistry:
                 statement_timeout_ms=statement_timeout_ms or s.eval_statement_timeout_ms,
                 profile_dir=profile_dir,
                 use_stored_profile=use_stored_profiles,
+                prompt_cap_tokens=prompt_cap_tokens,
             )
         return reg
 
