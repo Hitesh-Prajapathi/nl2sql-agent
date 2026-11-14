@@ -6,16 +6,21 @@ import threading
 import time
 from collections import deque
 from collections.abc import Awaitable, Callable
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any
 
+from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage
-from langchain_core.outputs import ChatGeneration, ChatResult
+from langchain_core.outputs import ChatGeneration, ChatResult, LLMResult
 from langchain_core.runnables import Runnable, RunnableLambda
+from langchain_core.runnables.config import merge_configs
 from pydantic import BaseModel, SecretStr
 
 from nl2sql.config import get_settings
+from nl2sql.llm import pacer as pacer_mod
+from nl2sql.llm.tokens import estimate_messages_tokens
 from nl2sql.models import PlanResult
 from nl2sql.telemetry import metrics
 
@@ -360,14 +365,84 @@ def _semaphore() -> asyncio.Semaphore:
     return _sem[1]
 
 
-async def _attempts(fn: Callable[[], Awaitable[Any]]) -> Any:
-    """Run ``fn`` with timeout and jittered exponential backoff on retryable errors."""
+# Which leg answered the current call. A caller (the eval harness) installs a fresh dict before the
+# call; ``resilient_call`` writes ``{"leg": "primary" | "fallback"}`` into it. A mutable holder is
+# used because LangChain may run the call in a child task whose ContextVar writes do not propagate.
+served_leg: ContextVar[dict[str, str] | None] = ContextVar("nl2sql_served_leg", default=None)
+
+
+def _mark_served(leg: str) -> None:
+    holder = served_leg.get()
+    if holder is not None:
+        holder["leg"] = leg
+
+
+@dataclass(frozen=True)
+class CallPlan:
+    """What the pacer needs to know about one call: model ids and the tokens to reserve."""
+
+    primary_model: str = ""
+    fallback_model: str = ""
+    reserve_tokens: int = 0
+
+
+class _TokenTap(BaseCallbackHandler):
+    """Sums reported token usage of the LLM calls it observes (to settle pacer reservations)."""
+
+    def __init__(self) -> None:
+        self.total = 0
+
+    def on_llm_end(self, response: LLMResult, **kwargs: Any) -> None:
+        for gens in response.generations:
+            for g in gens:
+                um = getattr(getattr(g, "message", None), "usage_metadata", None)
+                if um:
+                    self.total += int(um.get("total_tokens") or 0)
+
+
+def _chat_result_tokens(result: Any) -> int | None:
+    total = 0
+    for g in getattr(result, "generations", None) or []:
+        um = getattr(getattr(g, "message", None), "usage_metadata", None)
+        if um:
+            total += int(um.get("total_tokens") or 0)
+    return total or None
+
+
+def _active_pacer() -> pacer_mod.Pacer | None:
+    return pacer_mod.active_pacer(
+        settings.llm_provider,
+        settings.llm_pacing_enabled,
+        settings.llm_tpm_limit,
+        settings.llm_rpd_limit,
+    )
+
+
+async def _attempts(
+    fn: Callable[[], Awaitable[Any]],
+    model: str = "",
+    reserve: int = 0,
+    usage: Callable[[Any], int | None] | None = None,
+) -> Any:
+    """Run ``fn`` with pacing, timeout and jittered exponential backoff on retryable errors.
+
+    Pacing happens per HTTP attempt, outside the concurrency semaphore and the timeout, so a
+    request waiting for tokens neither holds a slot nor eats its own 30 s budget.
+    """
     retries = max(0, settings.llm_max_retries)
+    pacer = _active_pacer() if model else None
     for n in range(retries + 1):
         try:
+            if pacer is not None:
+                await pacer.acquire(model, reserve)
             async with _semaphore():
-                return await asyncio.wait_for(fn(), timeout=settings.llm_timeout_seconds)
+                result = await asyncio.wait_for(fn(), timeout=settings.llm_timeout_seconds)
+            if pacer is not None and usage is not None:
+                pacer.settle(model, reserve, usage(result))
+            return result
         except Exception as exc:
+            if pacer is not None and _status_of(exc) == 429:
+                pacer.note_rate_limited(model, exc)
             reason = retry_reason(exc)
             if reason is None or n >= retries:
                 raise
@@ -380,13 +455,18 @@ async def _attempts(fn: Callable[[], Awaitable[Any]]) -> Any:
 async def resilient_call(
     primary: Callable[[], Awaitable[Any]],
     fallback: Callable[[], Awaitable[Any]] | None = None,
+    *,
+    plan: CallPlan | None = None,
+    usage: Callable[[Any], int | None] | None = None,
 ) -> Any:
     """primary (retried, breaker-guarded) -> fallback model on retryable failure."""
+    plan = plan or CallPlan()
     primary_exc: BaseException | None = None
     if breaker.allow():
         try:
-            result = await _attempts(primary)
+            result = await _attempts(primary, plan.primary_model, plan.reserve_tokens, usage)
             breaker.success()
+            _mark_served("primary")
             return result
         except Exception as exc:
             if retry_reason(exc) is None:
@@ -398,7 +478,9 @@ async def resilient_call(
             raise primary_exc
         raise LLMUnavailableError("LLM circuit breaker is open")
     metrics.LLM_FALLBACKS.inc()
-    return await _attempts(fallback)
+    result = await _attempts(fallback, plan.fallback_model, plan.reserve_tokens, usage)
+    _mark_served("fallback")
+    return result
 
 
 class ResilientChatModel(BaseChatModel):
@@ -406,10 +488,23 @@ class ResilientChatModel(BaseChatModel):
 
     primary: Any
     fallback: Any = None
+    # Pacing inputs (empty = this model is not paced, e.g. the fake provider)
+    primary_model: str = ""
+    fallback_model: str = ""
+    max_tokens: int = 0
 
     @property
     def _llm_type(self) -> str:
         return "resilient"
+
+    def _plan(self, messages: Any) -> CallPlan:
+        if not self.primary_model:
+            return CallPlan()
+        return CallPlan(
+            self.primary_model,
+            self.fallback_model,
+            estimate_messages_tokens(messages) + self.max_tokens,
+        )
 
     def _generate(
         self,
@@ -435,7 +530,9 @@ class ResilientChatModel(BaseChatModel):
             return _c
 
         fb = call(self.fallback) if self.fallback is not None else None
-        result: ChatResult = await resilient_call(call(self.primary), fb)
+        result: ChatResult = await resilient_call(
+            call(self.primary), fb, plan=self._plan(messages), usage=_chat_result_tokens
+        )
         return result
 
     def with_structured_output(
@@ -456,8 +553,15 @@ class ResilientChatModel(BaseChatModel):
         f = build(self.fallback) if self.fallback is not None else None
 
         async def _run(messages: Any, config: Any = None) -> Any:
-            fb = (lambda: f.ainvoke(messages, config)) if f is not None else None
-            return await resilient_call(lambda: p.ainvoke(messages, config), fb)
+            tap = _TokenTap()
+            cfg = merge_configs(config, {"callbacks": [tap]})
+            fb = (lambda: f.ainvoke(messages, cfg)) if f is not None else None
+            return await resilient_call(
+                lambda: p.ainvoke(messages, cfg),
+                fb,
+                plan=self._plan(messages),
+                usage=lambda _r: tap.total or None,
+            )
 
         return RunnableLambda(_run)
 
@@ -470,32 +574,46 @@ class ResilientChatModel(BaseChatModel):
 def _groq(model: str, max_tokens: int) -> BaseChatModel:
     from langchain_groq import ChatGroq
 
+    extra: dict[str, Any] = {}
+    if model.startswith("openai/gpt-oss") and settings.llm_reasoning_effort:
+        extra["reasoning_effort"] = settings.llm_reasoning_effort
     return ChatGroq(
         model=model,
         temperature=0,
         max_tokens=max_tokens,
         api_key=SecretStr(settings.groq_api_key),
         max_retries=0,  # retries are owned by resilient_call
+        **extra,
+    )
+
+
+def _resilient_groq(model: str, max_tokens: int) -> ResilientChatModel:
+    # A fallback identical to the primary would only repeat the same failing, budget-consuming call.
+    fb_model = settings.fallback_model if settings.fallback_model != model else ""
+    return ResilientChatModel(
+        primary=_groq(model, max_tokens),
+        fallback=_groq(fb_model, max_tokens) if fb_model else None,
+        primary_model=model,
+        fallback_model=fb_model,
+        max_tokens=max_tokens,
     )
 
 
 def get_planner_llm() -> BaseChatModel:
-    """70B — planning, SQL generation, error correction."""
+    """Planner model (settings.planner_model): planning, SQL generation, error correction."""
     if settings.llm_provider == "fake":
         return ResilientChatModel(
             primary=FakeChatModel(channel="correct"),
             fallback=FakeChatModel(channel="correct"),
         )
-    fb = _groq(settings.fallback_model, 2048) if settings.fallback_model else None
-    return ResilientChatModel(primary=_groq(settings.planner_model, 2048), fallback=fb)
+    return _resilient_groq(settings.planner_model, settings.planner_max_tokens)
 
 
 def get_fast_llm() -> BaseChatModel:
-    """8B — synthesis, classification (very fast, generous rate limits)."""
+    """Fast model (settings.fast_model): synthesis, classification."""
     if settings.llm_provider == "fake":
         return ResilientChatModel(
             primary=FakeChatModel(channel="fast"),
             fallback=FakeChatModel(channel="fast"),
         )
-    fb = _groq(settings.fallback_model, 1024) if settings.fallback_model else None
-    return ResilientChatModel(primary=_groq(settings.fast_model, 1024), fallback=fb)
+    return _resilient_groq(settings.fast_model, settings.fast_max_tokens)

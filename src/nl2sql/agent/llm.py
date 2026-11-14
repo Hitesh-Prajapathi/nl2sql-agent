@@ -18,28 +18,30 @@ from nl2sql.llm import providers
 
 
 class LLMHook(Protocol):
-    def wrap(self, llm: BaseChatModel, role: str, model_id: str) -> Any: ...
+    def wrap(
+        self, llm: BaseChatModel, role: str, model_id: str, fallback_model_id: str = ""
+    ) -> Any: ...
 
 
 llm_hook: ContextVar[LLMHook | None] = ContextVar("nl2sql_llm_hook", default=None)
 
 
 def planner_llm() -> Any:
-    """70B-class model: planning, SQL generation, error correction."""
+    """Planner model: planning, SQL generation, error correction."""
     llm = providers.get_planner_llm()
     hook = llm_hook.get()
     if hook is None:
         return llm
-    return hook.wrap(llm, "planner", _model_id("planner"))
+    return hook.wrap(llm, "planner", _model_id("planner"), _fallback_id("planner"))
 
 
 def fast_llm() -> Any:
-    """Small model: answer synthesis."""
+    """Fast model: answer synthesis."""
     llm = providers.get_fast_llm()
     hook = llm_hook.get()
     if hook is None:
         return llm
-    return hook.wrap(llm, "fast", _model_id("fast"))
+    return hook.wrap(llm, "fast", _model_id("fast"), _fallback_id("fast"))
 
 
 def _model_id(role: str) -> str:
@@ -47,3 +49,12 @@ def _model_id(role: str) -> str:
     if s.llm_provider == "fake":
         return f"fake-{role}"
     return s.planner_model if role == "planner" else s.fast_model
+
+
+def _fallback_id(role: str) -> str:
+    s = get_settings()
+    if s.llm_provider == "fake":
+        return f"fake-{role}"
+    primary = _model_id(role)
+    # A fallback equal to the primary is not used (see providers._resilient_groq)
+    return s.fallback_model if s.fallback_model and s.fallback_model != primary else primary
