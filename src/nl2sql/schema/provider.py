@@ -7,7 +7,7 @@ import asyncpg
 import structlog
 
 from nl2sql.config import get_settings
-from nl2sql.schema.introspect import get_catalog_hash, introspect_schema
+from nl2sql.schema.introspect import get_catalog_hash, introspect_schema, resolve_schema
 from nl2sql.schema.profile import DatabaseProfile
 
 log = structlog.get_logger()
@@ -47,9 +47,17 @@ class FullSchemaProvider(SchemaProvider):
         t0 = time.perf_counter()
         if self._profile is None:
             async with self._pool.acquire() as conn:
-                db_name = await conn.fetchval("SELECT current_database()")
+                # schema-per-database layouts name the database by its (pinned) schema
+                schema = await resolve_schema(conn)
+                db_name = (
+                    await conn.fetchval("SELECT current_database()")
+                    if schema == "public"
+                    else schema
+                )
             self._profile = DatabaseProfile.from_db_name(db_name)
-        context = await introspect_schema(self._pool, self._profile)
+        context = await introspect_schema(
+            self._pool, self._profile, settings.profile_table_token_budget
+        )
         elapsed = (time.perf_counter() - t0) * 1000
         log.info("schema_introspected", duration_ms=round(elapsed))
 

@@ -1,0 +1,21 @@
+# LLM prices in USD per 1M tokens. NO numbers are filled in on purpose: fill each
+# `input_per_1m_usd` / `output_per_1m_usd` from the linked page and set `retrieved` to the date
+# you read it. While a price is null the eval reports tokens but leaves cost as null (never a
+# made-up number).
+currency: USD
+models:
+  llama-3.3-70b-versatile:
+    input_per_1m_usd: null   # TODO
+    output_per_1m_usd: null  # TODO
+    source_url: https://groq.com/pricing
+    retrieved: null          # TODO (YYYY-MM-DD)
+  llama-3.1-8b-instant:
+    input_per_1m_usd: null   # TODO
+    output_per_1m_usd: null  # TODO
+    source_url: https://groq.com/pricing
+    retrieved: null          # TODO (YYYY-MM-DD)
+  llama-4-scout-17b:
+    input_per_1m_usd: null   # TODO
+    output_per_1m_usd: null  # TODO
+    source_url: https://groq.com/pricing
+    retrieved: null          # TODO (YYYY-MM-DD)

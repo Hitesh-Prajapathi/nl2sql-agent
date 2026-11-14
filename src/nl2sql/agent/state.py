@@ -20,6 +20,11 @@ class AgentState(TypedDict):
     thread_id: str  # Session ID for multi-turn memory
     conversation_history: list[dict[str, Any]]  # Serialisable prior turns for prompt injection
 
+    # Optional (readers must use .get()): evaluation-mode inputs
+    eval_mode: bool  # True = skip synthesis and lift the row cap (benchmark runs)
+    evidence: str  # external hint text (BIRD "evidence") appended to the planner prompt
+    llm_error: str  # set when an LLM call failed (infrastructure, not an agent mistake)
+
     # ── Schema ────────────────────────────────────────────────────────────────
     schema_context: str  # Dynamically introspected DDL + profiling
     # Optional (readers must use .get()): database profile info

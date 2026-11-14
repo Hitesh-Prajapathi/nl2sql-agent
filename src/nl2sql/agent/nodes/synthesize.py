@@ -8,8 +8,8 @@ import structlog
 from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
 
+from nl2sql.agent.llm import fast_llm
 from nl2sql.agent.state import AgentState
-from nl2sql.llm.providers import get_fast_llm
 
 log = structlog.get_logger()
 
@@ -28,6 +28,14 @@ async def synthesize_node(state: AgentState, config: RunnableConfig) -> dict[str
     - Larger result    → 8B LLM narration or table listing
     """
     t0 = time.perf_counter()
+
+    # Evaluation mode: no answer prose is needed, only the executed SQL.
+    if state.get("eval_mode"):
+        return {
+            "status": "answered",
+            "final_answer": "",
+            "final_sql": state.get("generated_sql", ""),
+        }
 
     # Handle graceful failure path (max retries hit)
     if state.get("status") in ("refused", "failed"):
@@ -83,7 +91,7 @@ async def synthesize_node(state: AgentState, config: RunnableConfig) -> dict[str
         "- Do not invent data. Refer only to what is in the data above.\n"
         "- Do NOT use emojis."
     )
-    llm = get_fast_llm()
+    llm = fast_llm()
     try:
         response = await llm.ainvoke(
             [{"role": "user", "content": prompt}],
