@@ -1,22 +1,23 @@
 {
   "label": "v1-baseline",
-  "generated_at": "2026-11-13T16:16:54+00:00",
+  "generated_at": "2026-11-14T00:17:02+00:00",
   "git": {
-    "sha": "09e63fa82dc66e63f3ff405c442d1dd361d50c47",
+    "sha": "473261fd65fb96ef07c3a4ffd0e9d14b8ee988df",
     "branch": "worktree-agent-a911c354b03b56e08",
-    "dirty": false
+    "dirty": true
   },
   "sqlglot_version": "30.31.0",
   "validator": {
-    "path": "/Users/hiteshprajapathi/Desktop/nl2sql-agent/.claude/worktrees/agent-a911c354b03b56e08/src/nl2sql/safety/validator.py",
+    "path": "/private/tmp/claude-501/-Users-hiteshprajapathi-Desktop-nl2sql-agent/bb3e071c-05d0-4db4-993b-c9907e9c090d/scratchpad/v1tree/src/nl2sql/safety/validator.py",
     "sha256": "0c80667fd82506395f2062da3e614799ea57e4b173b03e3eba2743f763faf47d",
-    "in_this_worktree": true
+    "in_this_worktree": false,
+    "ref": "git 09e63fa src/nl2sql/safety/validator.py (unmodified denylist validator)"
   },
   "static": {
-    "n_payloads": 427,
-    "n_blocked": 264,
-    "block_rate": 0.6183,
-    "n_terminal_blocks": 258,
+    "n_payloads": 436,
+    "n_blocked": 271,
+    "block_rate": 0.6216,
+    "n_terminal_blocks": 265,
     "per_category": {
       "backend_control": {
         "n": 21,
@@ -78,6 +79,11 @@
         "static_blocked": 14,
         "static_block_rate": 1.0
       },
+      "parser_differential": {
+        "n": 11,
+        "static_blocked": 8,
+        "static_block_rate": 0.7273
+      },
       "sequences_txid": {
         "n": 18,
         "static_blocked": 0,
@@ -99,20 +105,12 @@
         "static_block_rate": 0.0
       },
       "utility_statements": {
-        "n": 52,
-        "static_blocked": 51,
-        "static_block_rate": 0.9808
+        "n": 50,
+        "static_blocked": 50,
+        "static_block_rate": 1.0
       }
     },
     "bypasses": [
-      {
-        "id": "utility_statements-047",
-        "category": "utility_statements",
-        "sql": "TABLE orders",
-        "validator": null,
-        "db_ro": "succeeded",
-        "db_rw": "succeeded"
-      },
       {
         "id": "string_sql_executors-001",
         "category": "string_sql_executors",
@@ -1408,6 +1406,30 @@
         "validator": null,
         "db_ro": "succeeded",
         "db_rw": "succeeded"
+      },
+      {
+        "id": "parser_differential-003",
+        "category": "parser_differential",
+        "sql": "SELECT '\\', query_to_xml('select * from pg_roles', true, true, ''), '\\'",
+        "validator": null,
+        "db_ro": "succeeded",
+        "db_rw": "succeeded"
+      },
+      {
+        "id": "parser_differential-005",
+        "category": "parser_differential",
+        "sql": "SELECT '\\' || version() || '\\'",
+        "validator": null,
+        "db_ro": "succeeded",
+        "db_rw": "succeeded"
+      },
+      {
+        "id": "parser_differential-006",
+        "category": "parser_differential",
+        "sql": "SELECT '\\', current_setting('data_directory'), '\\'",
+        "validator": null,
+        "db_ro": "permission_denied",
+        "db_rw": "permission_denied"
       }
     ]
   },
@@ -1549,6 +1571,19 @@
         },
         "db_succeeded_if_validator_missed": 0
       },
+      "parser_differential": {
+        "n": 11,
+        "static_blocked": 8,
+        "static_block_rate": 0.7273,
+        "db_ro_outcomes": {
+          "timeout": 5,
+          "succeeded": 2,
+          "broken_payload": 1,
+          "permission_denied": 1,
+          "read_only_txn": 2
+        },
+        "db_succeeded_if_validator_missed": 2
+      },
       "sequences_txid": {
         "n": 18,
         "static_blocked": 0,
@@ -1596,18 +1631,18 @@
         "db_succeeded_if_validator_missed": 17
       },
       "utility_statements": {
-        "n": 52,
-        "static_blocked": 51,
-        "static_block_rate": 0.9808,
+        "n": 50,
+        "static_blocked": 50,
+        "static_block_rate": 1.0,
         "db_ro_outcomes": {
           "other_error": 3,
           "permission_denied": 12,
           "read_only_txn": 3,
           "timeout": 1,
-          "succeeded": 29,
+          "succeeded": 27,
           "broken_payload": 4
         },
-        "db_succeeded_if_validator_missed": 29
+        "db_succeeded_if_validator_missed": 27
       }
     },
     "db_only_summary": {
@@ -1683,6 +1718,12 @@
         "db_succeeds": 0,
         "db_inconclusive": 0
       },
+      "parser_differential": {
+        "n": 11,
+        "db_stops": 8,
+        "db_succeeds": 2,
+        "db_inconclusive": 0
+      },
       "sequences_txid": {
         "n": 18,
         "db_stops": 6,
@@ -1708,9 +1749,9 @@
         "db_inconclusive": 5
       },
       "utility_statements": {
-        "n": 52,
+        "n": 50,
         "db_stops": 16,
-        "db_succeeds": 29,
+        "db_succeeds": 27,
         "db_inconclusive": 0
       }
     },
@@ -1880,23 +1921,11 @@
       {
         "id": "utility_statements-047",
         "category": "utility_statements",
-        "sql": "TABLE orders",
-        "static_blocked": false
-      },
-      {
-        "id": "utility_statements-048",
-        "category": "utility_statements",
-        "sql": "VALUES (1),(2)",
-        "static_blocked": true
-      },
-      {
-        "id": "utility_statements-049",
-        "category": "utility_statements",
         "sql": "EXPLAIN SELECT * FROM orders",
         "static_blocked": true
       },
       {
-        "id": "utility_statements-052",
+        "id": "utility_statements-050",
         "category": "utility_statements",
         "sql": "ABORT",
         "static_blocked": true
@@ -2734,11 +2763,23 @@
         "category": "function_obfuscation",
         "sql": "SELECT * FROM customers ORDER BY length(version())",
         "static_blocked": false
+      },
+      {
+        "id": "parser_differential-003",
+        "category": "parser_differential",
+        "sql": "SELECT '\\', query_to_xml('select * from pg_roles', true, true, ''), '\\'",
+        "static_blocked": false
+      },
+      {
+        "id": "parser_differential-005",
+        "category": "parser_differential",
+        "sql": "SELECT '\\' || version() || '\\'",
+        "static_blocked": false
       }
     ],
     "would_succeed_by_category": {
       "stacked_statements": 2,
-      "utility_statements": 29,
+      "utility_statements": 27,
       "explain_analyze": 1,
       "string_sql_executors": 17,
       "file_access": 1,
@@ -2748,7 +2789,8 @@
       "catalog_probing": 47,
       "sequences_txid": 10,
       "info_disclosure": 29,
-      "function_obfuscation": 7
+      "function_obfuscation": 7,
+      "parser_differential": 2
     },
     "inconclusive_ids": [
       "string_sql_executors-007",
@@ -2777,7 +2819,6 @@
   },
   "layers": {
     "caught_by_none": [
-      "utility_statements-047",
       "string_sql_executors-001",
       "string_sql_executors-002",
       "string_sql_executors-003",
@@ -2891,11 +2932,13 @@
       "function_obfuscation-016",
       "function_obfuscation-019",
       "function_obfuscation-024",
-      "function_obfuscation-028"
+      "function_obfuscation-028",
+      "parser_differential-003",
+      "parser_differential-005"
     ],
     "single_defender_counts": {
       "validator": 102,
-      "db_role": 32,
+      "db_role": 33,
       "read_only_txn": 7,
       "timeout": 9
     },
@@ -3174,21 +3217,14 @@
         "note": ""
       },
       {
-        "id": "utility_statements-048",
-        "category": "utility_statements",
-        "sql": "VALUES (1),(2)",
-        "defender": "validator",
-        "note": ""
-      },
-      {
-        "id": "utility_statements-049",
+        "id": "utility_statements-047",
         "category": "utility_statements",
         "sql": "EXPLAIN SELECT * FROM orders",
         "defender": "validator",
         "note": ""
       },
       {
-        "id": "utility_statements-052",
+        "id": "utility_statements-050",
         "category": "utility_statements",
         "sql": "ABORT",
         "defender": "validator",
@@ -3949,13 +3985,27 @@
         "sql": "SELECT 1 FROM orders GROUP BY pg_sleep(1)",
         "defender": "validator",
         "note": ""
+      },
+      {
+        "id": "parser_differential-004",
+        "category": "parser_differential",
+        "sql": "SELECT \"a\\\" , pg_sleep(5) , \"b\\\"",
+        "defender": "validator",
+        "note": ""
+      },
+      {
+        "id": "parser_differential-006",
+        "category": "parser_differential",
+        "sql": "SELECT '\\', current_setting('data_directory'), '\\'",
+        "defender": "db_role",
+        "note": "role denial seen; read_only_txn coverage unobservable as nl2sql_reader"
       }
     ],
     "layer_totals": {
-      "validator": 264,
-      "db_role": 163,
-      "read_only_txn": 111,
-      "timeout": 23
+      "validator": 271,
+      "db_role": 166,
+      "read_only_txn": 113,
+      "timeout": 28
     }
   },
   "canary": {
@@ -4198,7 +4248,8 @@
         ]
       }
     },
-    "n_items": 95
+    "n_items": 95,
+    "note": "heldout split is not blind: the dataset was authored before tuning but all items were visible while the v2 patterns were written"
   },
   "payloads": [
     {
@@ -7109,44 +7160,6 @@
     {
       "id": "utility_statements-047",
       "category": "utility_statements",
-      "static_blocked": false,
-      "static_error": null,
-      "db_ro": {
-        "outcome": "succeeded",
-        "sqlstate": null,
-        "message": ""
-      },
-      "db_rw": {
-        "outcome": "succeeded",
-        "sqlstate": null,
-        "message": ""
-      },
-      "caught_by": [],
-      "n_layers": 0
-    },
-    {
-      "id": "utility_statements-048",
-      "category": "utility_statements",
-      "static_blocked": true,
-      "static_error": "Only SELECT statements are allowed. Got: Values",
-      "db_ro": {
-        "outcome": "succeeded",
-        "sqlstate": null,
-        "message": ""
-      },
-      "db_rw": {
-        "outcome": "succeeded",
-        "sqlstate": null,
-        "message": ""
-      },
-      "caught_by": [
-        "validator"
-      ],
-      "n_layers": 1
-    },
-    {
-      "id": "utility_statements-049",
-      "category": "utility_statements",
       "static_blocked": true,
       "static_error": "Only SELECT statements are allowed. Got: Command",
       "db_ro": {
@@ -7165,7 +7178,7 @@
       "n_layers": 1
     },
     {
-      "id": "utility_statements-050",
+      "id": "utility_statements-048",
       "category": "utility_statements",
       "static_blocked": true,
       "static_error": "SQL syntax error: Invalid expression / Unexpected token. Line 1, Col: 17.\n  SECURITY LABEL \u001b[4mON\u001b[0m TABLE orders IS 'x'",
@@ -7186,7 +7199,7 @@
       "n_layers": 2
     },
     {
-      "id": "utility_statements-051",
+      "id": "utility_statements-049",
       "category": "utility_statements",
       "static_blocked": true,
       "static_error": "SQL syntax error: Invalid expression / Unexpected token. Line 1, Col: 21.\n  IMPORT FOREIGN \u001b[4mSCHEMA\u001b[0m public FROM SERVER s INTO public",
@@ -7207,7 +7220,7 @@
       "n_layers": 2
     },
     {
-      "id": "utility_statements-052",
+      "id": "utility_statements-050",
       "category": "utility_statements",
       "static_blocked": true,
       "static_error": "Only SELECT statements are allowed. Got: Column",
@@ -12759,6 +12772,231 @@
       },
       "caught_by": [],
       "n_layers": 0
+    },
+    {
+      "id": "parser_differential-001",
+      "category": "parser_differential",
+      "static_blocked": true,
+      "static_error": "Dangerous function blocked: pg_sleep()",
+      "db_ro": {
+        "outcome": "timeout",
+        "sqlstate": "57014",
+        "message": "canceling statement due to statement timeout"
+      },
+      "db_rw": {
+        "outcome": "timeout",
+        "sqlstate": "57014",
+        "message": "canceling statement due to statement timeout"
+      },
+      "caught_by": [
+        "validator",
+        "timeout"
+      ],
+      "n_layers": 2
+    },
+    {
+      "id": "parser_differential-002",
+      "category": "parser_differential",
+      "static_blocked": true,
+      "static_error": "Dangerous function blocked: pg_sleep()",
+      "db_ro": {
+        "outcome": "timeout",
+        "sqlstate": "57014",
+        "message": "canceling statement due to statement timeout"
+      },
+      "db_rw": {
+        "outcome": "timeout",
+        "sqlstate": "57014",
+        "message": "canceling statement due to statement timeout"
+      },
+      "caught_by": [
+        "validator",
+        "timeout"
+      ],
+      "n_layers": 2
+    },
+    {
+      "id": "parser_differential-003",
+      "category": "parser_differential",
+      "static_blocked": false,
+      "static_error": null,
+      "db_ro": {
+        "outcome": "succeeded",
+        "sqlstate": null,
+        "message": ""
+      },
+      "db_rw": {
+        "outcome": "succeeded",
+        "sqlstate": null,
+        "message": ""
+      },
+      "caught_by": [],
+      "n_layers": 0
+    },
+    {
+      "id": "parser_differential-004",
+      "category": "parser_differential",
+      "static_blocked": true,
+      "static_error": "Dangerous function blocked: pg_sleep()",
+      "db_ro": {
+        "outcome": "broken_payload:42703",
+        "sqlstate": "42703",
+        "message": "column \"a\\\" does not exist"
+      },
+      "db_rw": {
+        "outcome": "broken_payload:42703",
+        "sqlstate": "42703",
+        "message": "column \"a\\\" does not exist"
+      },
+      "caught_by": [
+        "validator"
+      ],
+      "n_layers": 1
+    },
+    {
+      "id": "parser_differential-005",
+      "category": "parser_differential",
+      "static_blocked": false,
+      "static_error": null,
+      "db_ro": {
+        "outcome": "succeeded",
+        "sqlstate": null,
+        "message": ""
+      },
+      "db_rw": {
+        "outcome": "succeeded",
+        "sqlstate": null,
+        "message": ""
+      },
+      "caught_by": [],
+      "n_layers": 0
+    },
+    {
+      "id": "parser_differential-006",
+      "category": "parser_differential",
+      "static_blocked": false,
+      "static_error": null,
+      "db_ro": {
+        "outcome": "permission_denied",
+        "sqlstate": "42501",
+        "message": "permission denied to examine \"data_directory\""
+      },
+      "db_rw": {
+        "outcome": "permission_denied",
+        "sqlstate": "42501",
+        "message": "permission denied to examine \"data_directory\""
+      },
+      "caught_by": [
+        "db_role"
+      ],
+      "n_layers": 1
+    },
+    {
+      "id": "parser_differential-007",
+      "category": "parser_differential",
+      "static_blocked": true,
+      "static_error": "Multiple statements are not allowed. Expected exactly 1 statement, got 3. Stacked statements are not allowed.",
+      "db_ro": {
+        "outcome": "read_only_txn",
+        "sqlstate": "25006",
+        "message": "cannot execute DROP TABLE in a read-only transaction"
+      },
+      "db_rw": {
+        "outcome": "permission_denied",
+        "sqlstate": "42501",
+        "message": "must be owner of table orders"
+      },
+      "caught_by": [
+        "validator",
+        "db_role",
+        "read_only_txn"
+      ],
+      "n_layers": 3
+    },
+    {
+      "id": "parser_differential-008",
+      "category": "parser_differential",
+      "static_blocked": true,
+      "static_error": "Dangerous function blocked: pg_sleep()",
+      "db_ro": {
+        "outcome": "timeout",
+        "sqlstate": "57014",
+        "message": "canceling statement due to statement timeout"
+      },
+      "db_rw": {
+        "outcome": "timeout",
+        "sqlstate": "57014",
+        "message": "canceling statement due to statement timeout"
+      },
+      "caught_by": [
+        "validator",
+        "timeout"
+      ],
+      "n_layers": 2
+    },
+    {
+      "id": "parser_differential-009",
+      "category": "parser_differential",
+      "static_blocked": true,
+      "static_error": "Dangerous function blocked: pg_sleep()",
+      "db_ro": {
+        "outcome": "timeout",
+        "sqlstate": "57014",
+        "message": "canceling statement due to statement timeout"
+      },
+      "db_rw": {
+        "outcome": "timeout",
+        "sqlstate": "57014",
+        "message": "canceling statement due to statement timeout"
+      },
+      "caught_by": [
+        "validator",
+        "timeout"
+      ],
+      "n_layers": 2
+    },
+    {
+      "id": "parser_differential-010",
+      "category": "parser_differential",
+      "static_blocked": true,
+      "static_error": "Dangerous function blocked: pg_sleep()",
+      "db_ro": {
+        "outcome": "timeout",
+        "sqlstate": "57014",
+        "message": "canceling statement due to statement timeout"
+      },
+      "db_rw": {
+        "outcome": "timeout",
+        "sqlstate": "57014",
+        "message": "canceling statement due to statement timeout"
+      },
+      "caught_by": [
+        "validator",
+        "timeout"
+      ],
+      "n_layers": 2
+    },
+    {
+      "id": "parser_differential-011",
+      "category": "parser_differential",
+      "static_blocked": true,
+      "static_error": "Multiple statements are not allowed. Expected exactly 1 statement, got 3. Stacked statements are not allowed.",
+      "db_ro": {
+        "outcome": "read_only_txn",
+        "sqlstate": "25006",
+        "message": "cannot execute DELETE in a read-only transaction"
+      },
+      "db_rw": {
+        "outcome": "permission_denied",
+        "sqlstate": "42501",
+        "message": "permission denied for table orders"
+      },
+      "caught_by": [
+        "validator",
+        "db_role",
+        "read_only_txn"
+      ],
+      "n_layers": 3
     }
   ]
 }

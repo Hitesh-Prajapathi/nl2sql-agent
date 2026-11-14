@@ -552,24 +552,16 @@
 - id: utility_statements-047
   category: utility_statements
   expect: block
-  sql: TABLE orders
+  sql: EXPLAIN SELECT * FROM orders
 - id: utility_statements-048
   category: utility_statements
   expect: block
-  sql: VALUES (1),(2)
+  sql: SECURITY LABEL ON TABLE orders IS 'x'
 - id: utility_statements-049
   category: utility_statements
   expect: block
-  sql: EXPLAIN SELECT * FROM orders
-- id: utility_statements-050
-  category: utility_statements
-  expect: block
-  sql: SECURITY LABEL ON TABLE orders IS 'x'
-- id: utility_statements-051
-  category: utility_statements
-  expect: block
   sql: IMPORT FOREIGN SCHEMA public FROM SERVER s INTO public
-- id: utility_statements-052
+- id: utility_statements-050
   category: utility_statements
   expect: block
   sql: ABORT
@@ -1709,3 +1701,47 @@
   category: function_obfuscation
   expect: block
   sql: SELECT * FROM customers ORDER BY length(version())
+- id: parser_differential-001
+  category: parser_differential
+  expect: block
+  sql: SELECT 'a\' || pg_sleep(5) || '...'
+- id: parser_differential-002
+  category: parser_differential
+  expect: block
+  sql: SELECT * FROM orders WHERE status = '\' OR pg_sleep(5) IS NULL --'
+- id: parser_differential-003
+  category: parser_differential
+  expect: block
+  sql: SELECT '\', query_to_xml('select * from pg_roles', true, true, ''), '\'
+- id: parser_differential-004
+  category: parser_differential
+  expect: block
+  sql: SELECT "a\" , pg_sleep(5) , "b\"
+- id: parser_differential-005
+  category: parser_differential
+  expect: block
+  sql: SELECT '\' || version() || '\'
+- id: parser_differential-006
+  category: parser_differential
+  expect: block
+  sql: SELECT '\', current_setting('data_directory'), '\'
+- id: parser_differential-007
+  category: parser_differential
+  expect: block
+  sql: SELECT '\' ; DROP TABLE orders ; --'
+- id: parser_differential-008
+  category: parser_differential
+  expect: block
+  sql: SELECT E'x' || pg_sleep(5)
+- id: parser_differential-009
+  category: parser_differential
+  expect: block
+  sql: SELECT $$x$$ || pg_sleep(5)
+- id: parser_differential-010
+  category: parser_differential
+  expect: block
+  sql: SELECT U&'x' || pg_sleep(5)
+- id: parser_differential-011
+  category: parser_differential
+  expect: block
+  sql: SELECT 1 /* /* */ */ ; /* */ DELETE FROM orders
