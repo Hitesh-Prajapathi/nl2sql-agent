@@ -10,3 +10,11 @@ dist/
 .pytest_cache/
 benchmarks/results/*.json
 *.log
+
+# BIRD data and generated profiles: only the MANIFEST is committed
+data/*
+!data/bird_minidev/
+data/bird_minidev/*
+!data/bird_minidev/MANIFEST.json
+.eval_cache/
+results/*.jsonl
