@@ -1,3 +1,4 @@
-# PLACEHOLDER: replace the line below with the integer correct-count of the full variant on eval_smoke_ids.txt.
-# The gate fails when correct < baseline - 2. Lines starting with # are ignored.
+# Integer correct-count (records with ex == 1) of full_small on eval_smoke_ids.txt (25 questions).
+# 0 until the first green smoke run: copy the "correct=" value from that run's step summary here.
+# While it is 0 the gate (fail when correct < baseline - 2) cannot fail. Lines starting with # are ignored.
 0

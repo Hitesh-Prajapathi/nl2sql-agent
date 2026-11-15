@@ -25,6 +25,18 @@ jobs:
     timeout-minutes: 45
     env:
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - name: Check secret
         id: gate
@@ -47,20 +59,34 @@ jobs:
         run: uv sync --frozen --extra dev
       - name: Set up BIRD data
         if: steps.gate.outputs.run == 'true'
-        # TODO: confirm CLI once harness lands (no bird-setup target in the Makefile yet)
+        # Downloads BIRD Mini-Dev and loads it into the bird_minidev database (uses psql on the runner).
         run: make bird-setup
       - name: Run eval on fixed subset
         if: steps.gate.outputs.run == 'true'
-        # TODO: confirm CLI once harness lands
-        run: uv run python -m nl2sql.eval.runner --variant full --ids-file .github/eval_smoke_ids.txt
+        # Writes results/bird_minidev_full_small-n25_<date>.json (label includes the question count).
+        run: |
+          ids=$(grep -v '^#' .github/eval_smoke_ids.txt | grep -E '^[0-9]+$' | paste -sd, -)
+          make eval VARIANT=full_small IDS="$ids" EVAL_ARGS="--fresh"
       - name: Gate on baseline
         if: steps.gate.outputs.run == 'true'
-        # TODO: confirm CLI once harness lands (results path and JSON key "correct" are assumptions)
+        # Counts records with ex == 1 (summary.ex is a percentage, not a count).
         run: |
-          baseline=$(grep -v '^#' .github/eval_smoke_baseline.txt | head -1)
-          correct=$(python3 -c "import json,glob; f=sorted(glob.glob('results/**/*.json', recursive=True))[-1]; print(json.load(open(f))['correct'])")
-          echo "correct=$correct baseline=$baseline" | tee -a "$GITHUB_STEP_SUMMARY"
-          if [ "$correct" -lt $((baseline - 2)) ]; then echo "Below baseline - 2"; exit 1; fi
+          baseline=$(grep -v '^#' .github/eval_smoke_baseline.txt | grep -E '^[0-9]+$' | head -1)
+          python3 - "$baseline" <<'PY' | tee -a "$GITHUB_STEP_SUMMARY"
+          import glob, json, sys
+          baseline = int(sys.argv[1])
+          files = sorted(glob.glob("results/bird_minidev_full_small-n25_*.json"))
+          if not files:
+              sys.exit("no results JSON found")
+          res = json.load(open(files[-1]))
+          s = res["summary"]
+          correct = sum(1 for r in res["records"] if r.get("ex") in (1, True))
+          print(f"correct={correct} n_scored={s['n_scored']}/{s['n_total']} infra_errors={s['n_infra_error']} baseline={baseline}")
+          if s["n_scored"] == 0:
+              sys.exit("no questions were scored (infra errors / rate limit?)")
+          if correct < baseline - 2:
+              sys.exit(f"Below baseline - 2 ({correct} < {baseline - 2})")
+          PY
       - uses: actions/upload-artifact@v4
         if: always() && steps.gate.outputs.run == 'true'
         with:

@@ -1,7 +1,14 @@
 name: Eval nightly
+# Runs the 150-question stratified subset (config/bird_subset_150.txt, variant full_small), not all 500:
+# the Groq free tier caps usage at about 200K tokens/day, so one run spans SEVERAL DAYS. Progress lives in
+# a JSONL checkpoint plus the LLM response cache (.eval_cache/), restored from / saved to actions/cache
+# (key prefix eval-nightly-<ISO week>-). The daily cron resumes the same weekly campaign; when the
+# checkpoint is complete the run just re-finalises results without LLM calls. A new ISO week starts a
+# fresh campaign. Limitations: GitHub evicts caches unused for 7 days, and a cache is immutable per key,
+# so each run saves a new key (run_id) and restores the newest one by prefix.
 on:
   schedule:
-    - cron: "0 3 * * 1"
+    - cron: "0 3 * * *"
   workflow_dispatch:
 permissions:
   contents: read
@@ -38,14 +45,39 @@ jobs:
           python-version: "3.11"
       - run: uv sync --frozen --extra dev
       - name: BIRD setup
-        # TODO: confirm CLI once harness lands
         run: make bird-setup
-      - name: Full BIRD run
-        # TODO: confirm CLI once harness lands
-        run: uv run python -m nl2sql.eval.runner --variant full
+      - name: Cache key (ISO week)
+        id: wk
+        run: echo "week=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
+      - name: Restore eval checkpoint and LLM cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            results/bird_minidev_full_small-n150.jsonl
+            .eval_cache
+          key: eval-nightly-${{ steps.wk.outputs.week }}-${{ github.run_id }}
+          restore-keys: |
+            eval-nightly-${{ steps.wk.outputs.week }}-
+      - name: BIRD full_small run (150-question subset, resumes from checkpoint)
+        id: eval
+        # Stops cleanly when the daily token budget is exhausted; the checkpoint is saved below.
+        continue-on-error: true
+        run: |
+          ids=$(grep -v '^#' config/bird_subset_150.txt | grep -E '^[0-9]+$' | paste -sd, -)
+          make eval VARIANT=full_small IDS="$ids" EVAL_ARGS="--checkpoint results/bird_minidev_full_small-n150.jsonl"
+      - name: Save eval checkpoint and LLM cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            results/bird_minidev_full_small-n150.jsonl
+            .eval_cache
+          key: eval-nightly-${{ steps.wk.outputs.week }}-${{ github.run_id }}
+      - name: Note partial run
+        if: steps.eval.outcome == 'failure'
+        run: echo "::warning::eval run stopped early (likely daily token budget); it resumes from the cached checkpoint on the next run."
       - name: SQL red-team suite
-        # TODO: confirm CLI once harness lands (redteam/run_sql_suite.py)
-        run: uv run python redteam/run_sql_suite.py
+        run: uv run python redteam/run_sql_suite.py --out results/redteam_sql_nightly.json --label nightly-${{ github.run_id }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
