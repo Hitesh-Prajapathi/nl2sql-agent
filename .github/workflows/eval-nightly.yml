@@ -50,7 +50,7 @@ jobs:
         id: wk
         run: echo "week=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
       - name: Restore eval checkpoint and LLM cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: |
             results/bird_minidev_full_small-n150.jsonl
@@ -67,7 +67,7 @@ jobs:
           make eval VARIANT=full_small IDS="$ids" EVAL_ARGS="--checkpoint results/bird_minidev_full_small-n150.jsonl"
       - name: Save eval checkpoint and LLM cache
         if: always()
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: |
             results/bird_minidev_full_small-n150.jsonl
