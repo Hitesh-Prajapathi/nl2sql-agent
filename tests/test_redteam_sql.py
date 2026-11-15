@@ -159,10 +159,12 @@ def test_table_allowlist() -> None:
     cte = "WITH x AS (SELECT * FROM orders) SELECT * FROM x"
     assert validate_sql(cte, allowed_tables=allowed).is_valid
     denied = validate_sql("SELECT * FROM payments", allowed_tables=allowed)
-    assert denied.is_safety_block
+    assert not denied.is_valid
+    assert not denied.is_safety_block  # unknown table: correctable, not terminal
     assert "payments" in (denied.error or "")
     sub = "SELECT * FROM orders WHERE order_id IN (SELECT order_id FROM payments)"
-    assert validate_sql(sub, allowed_tables=allowed).is_safety_block
+    assert not validate_sql(sub, allowed_tables=allowed).is_valid
+    assert not validate_sql(sub, allowed_tables=allowed).is_safety_block
     # backward compatible: no allowlist means no table restriction
     assert validate_sql("SELECT * FROM payments").is_valid
 
@@ -170,3 +172,43 @@ def test_table_allowlist() -> None:
 def test_non_public_schema_is_blocked() -> None:
     assert validate_sql("SELECT * FROM restricted.canary").is_safety_block
     assert validate_sql("SELECT * FROM public.orders").is_valid
+
+
+def test_unknown_table_is_correctable_but_system_schema_is_terminal() -> None:
+    allowed = {"orders"}
+    unknown = validate_sql("SELECT * FROM clients", allowed_tables=allowed)
+    assert not unknown.is_valid and not unknown.is_blocked
+    assert "clients" in (unknown.error or "")
+    for sql in (
+        "SELECT * FROM pg_catalog.pg_tables",
+        "SELECT * FROM information_schema.tables",
+        "SELECT * FROM pg_roles",
+    ):
+        assert validate_sql(sql, allowed_tables=allowed).is_blocked, sql
+    # an unknown table listed first must not mask a system-schema reference
+    mixed = "SELECT * FROM clients c JOIN pg_catalog.pg_tables t ON true"
+    assert validate_sql(mixed, allowed_tables=allowed).is_blocked
+    # other schemas stay terminal too
+    assert validate_sql("SELECT * FROM secret.orders", allowed_tables=allowed).is_blocked
+
+
+def test_table_allowlist_ctes_qualified_case_and_quoting() -> None:
+    allowed = {"orders", "customers"}
+    ok = [
+        "WITH recent AS (SELECT * FROM orders) SELECT * FROM recent r JOIN customers c ON true",
+        "WITH a AS (SELECT 1 AS x), b AS (SELECT x FROM a) SELECT * FROM b",
+        "SELECT * FROM public.orders",
+        'SELECT * FROM "public"."Orders"',
+        'SELECT * FROM "ORDERS" o',
+        "SELECT * FROM Customers",
+        "SELECT * FROM (SELECT * FROM orders) s",
+        "SELECT * FROM generate_series(1, 3) g",
+    ]
+    for sql in ok:
+        res = validate_sql(sql, allowed_tables=allowed)
+        assert res.is_valid, (sql, res.error)
+    # a CTE name does not excuse a schema-qualified reference to a missing table
+    res = validate_sql("WITH x AS (SELECT 1) SELECT * FROM public.x", allowed_tables=allowed)
+    assert not res.is_valid and not res.is_blocked
+    # no allowlist = no restriction (unchanged)
+    assert validate_sql("SELECT * FROM clients").is_valid

@@ -283,6 +283,7 @@ async def run_query(
         "evidence": evidence,
         "llm_error": "",
         "db_display_name": "",
+        "schema_tables": [],
         "data_date_ranges": {},
     }
 

@@ -42,6 +42,7 @@ async def load_schema_node(state: AgentState, registry: DatabaseRegistry) -> dic
     schema_context = await resources.schema_provider.get_context(
         state.get("question", ""), evidence=(state.get("evidence") or "").strip()
     )
+    tables = await resources.schema_provider.table_names()
     elapsed_ms = round((time.perf_counter() - t0) * 1000)
     timings = dict(state.get("timings", {}))
     timings["load_schema_ms"] = elapsed_ms
@@ -49,6 +50,7 @@ async def load_schema_node(state: AgentState, registry: DatabaseRegistry) -> dic
     profile = resources.profile
     return {
         "schema_context": schema_context,
+        "schema_tables": sorted(tables) if tables else [],
         "db_id": resources.db_id,
         "db_display_name": profile.display_name if profile else "",
         "data_date_ranges": dict(profile.date_ranges) if profile else {},

@@ -31,9 +31,17 @@ def refuse_plan(reason: str) -> PlanResult:
 
 
 class StubSchemaProvider(SchemaProvider):
-    def __init__(self, context: str = "TABLE: customers (customer_id, name)") -> None:
+    def __init__(
+        self,
+        context: str = "TABLE: customers (customer_id, name)",
+        tables: frozenset[str] | None = None,
+    ) -> None:
         self.context = context
+        self.tables = tables
         self.calls = 0
+
+    async def table_names(self) -> frozenset[str] | None:
+        return self.tables
 
     async def get_context(self, question: str = "", evidence: str = "") -> str:
         self.calls += 1

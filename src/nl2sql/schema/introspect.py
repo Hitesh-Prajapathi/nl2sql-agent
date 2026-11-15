@@ -18,8 +18,11 @@ import re
 from typing import Any
 
 import asyncpg
+import structlog
 
 from nl2sql.schema.profile import DatabaseProfile
+
+log = structlog.get_logger()
 
 PROFILE_FORMAT_VERSION = 1
 
@@ -308,16 +311,32 @@ async def introspect_schema(
 
 
 async def _get_tables(conn: asyncpg.Connection, schema: str) -> list[dict[str, Any]]:
-    rows = await conn.fetch(
-        """
-        SELECT c.oid, c.relname AS name, c.reltuples
+    """Tables of ``schema`` that the current role can SELECT from.
+
+    Profiling runs ``SELECT`` on every table, so a table the role cannot read would otherwise
+    break the whole run. Such tables are skipped (one warning each) and never reach the prompt.
+    """
+    query = """
+        SELECT c.oid, c.relname AS name, c.reltuples,
+               {readable} AS readable
         FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
         WHERE n.nspname = $1 AND c.relkind IN ('r', 'p')
         ORDER BY c.relname
-        """,
-        schema,
-    )
-    return [dict(r) for r in rows]
+        """
+    try:
+        rows = await conn.fetch(
+            query.format(readable="has_table_privilege(c.oid, 'SELECT')"), schema
+        )
+    except asyncpg.exceptions.InsufficientPrivilegeError:
+        # hardened role without EXECUTE on the privilege functions: assume readable
+        rows = await conn.fetch(query.format(readable="true"), schema)
+    tables: list[dict[str, Any]] = []
+    for r in rows:
+        if not r["readable"]:
+            log.warning("schema_table_skipped_unreadable", schema=schema, table=r["name"])
+            continue
+        tables.append({"oid": r["oid"], "name": r["name"], "reltuples": r["reltuples"]})
+    return tables
 
 
 async def _get_columns(conn: asyncpg.Connection, table_oid: int) -> list[dict[str, Any]]:

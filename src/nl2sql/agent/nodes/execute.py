@@ -31,7 +31,11 @@ def validate_sql_node(state: AgentState) -> dict[str, Any]:
     """Static AST validation — runs synchronously (no I/O)."""
     t0 = time.perf_counter()
     sql = state.get("generated_sql", "")
-    result = validate_sql(sql)
+    # Table allowlist = the tables of the loaded schema (an empty/unknown list means no allowlist).
+    # BIRD's schema-per-database layout needs no special handling: each database's pool pins
+    # search_path, queries use unqualified names, and the list holds that schema's bare names.
+    tables = state.get("schema_tables") or None
+    result = validate_sql(sql, allowed_tables=set(tables) if tables else None)
     elapsed_ms = round((time.perf_counter() - t0) * 1000)
     timings = dict(state.get("timings", {}))
     timings["validate_sql_ms"] = elapsed_ms

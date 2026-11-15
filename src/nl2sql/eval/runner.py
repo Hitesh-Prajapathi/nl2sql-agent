@@ -31,7 +31,7 @@ from nl2sql.eval.metrics import (
 )
 from nl2sql.eval.sqlrunner import SqlOutcome, SqlRunner
 from nl2sql.eval.variants import Prediction, Variant, is_permanent_llm_error, is_rate_limit
-from nl2sql.llm.pacer import DAILY_MARKER, Pacer
+from nl2sql.llm.pacer import DAILY_MARKER, Pacer, wall_sleep
 
 log = structlog.get_logger()
 
@@ -334,7 +334,7 @@ async def _predict_with_retry(
             delay_s=round(delay, 1),
             error=text[:120],
         )
-        await sleep(delay)
+        await wall_sleep(delay, sleep=sleep)
         pred = await variant.predict(q, cfg.use_evidence)
         n += 1
     return pred
