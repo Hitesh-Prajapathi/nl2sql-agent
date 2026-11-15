@@ -27,6 +27,13 @@ ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
+# Pick up Debian security fixes, and drop the base image's system setuptools: the app runs from
+# /app/.venv, and the vendored copy inside setuptools is what vulnerability scanners flag.
+RUN apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip uninstall -y setuptools wheel 2>/dev/null || true
+
 RUN groupadd --system --gid 10001 app \
     && useradd --system --uid 10001 --gid app --home-dir /app --shell /usr/sbin/nologin app
 
