@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # ── Builder: resolve and install runtime dependencies into /app/.venv ────────
-FROM python:3.11-slim AS builder
+FROM python:3.15-slim AS builder
 
 COPY --from=ghcr.io/astral-sh/uv:0.9.25 /uv /usr/local/bin/uv
 
@@ -20,7 +20,7 @@ COPY src/ src/
 RUN uv sync --frozen --no-dev || (echo "WARNING: uv.lock missing or stale; resolving without lock" >&2 && uv sync --no-dev)
 
 # ── Runtime ──────────────────────────────────────────────────────────────────
-FROM python:3.11-slim AS runtime
+FROM python:3.15-slim AS runtime
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONPATH=/app/src \
