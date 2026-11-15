@@ -7,6 +7,7 @@ from nl2sql.schema.introspect import get_catalog_hash, introspect_schema
 from nl2sql.schema.provider import FullSchemaProvider
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_schema_introspection_and_profiling() -> None:
     pool = await get_pool()
