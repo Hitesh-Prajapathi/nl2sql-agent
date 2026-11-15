@@ -4,7 +4,7 @@
 -- ============================================================
 
 -- Create a reader role with SELECT-only access
--- This is Layer 1 of the 7-layer safety model — the real guarantee.
+-- This is the first database-side safety layer and the real guarantee:
 -- Even if sqlglot validation and read-only transactions both fail,
 -- the DB role physically cannot write.
 
