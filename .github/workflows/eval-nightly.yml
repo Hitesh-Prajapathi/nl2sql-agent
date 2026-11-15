@@ -38,7 +38,7 @@ jobs:
     steps:
       - name: Check secret
         run: '[ -n "$GROQ_API_KEY" ] || { echo "::error::GROQ_API_KEY is not set"; exit 1; }'
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
