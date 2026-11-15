@@ -97,6 +97,36 @@ async def test_ast_block_is_refused_with_validation_error(
     assert fake_llm.count("correct") == 0
 
 
+async def test_unknown_table_is_corrected_not_refused(
+    fake_llm: FakeLLMScript, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ex = FakeExecutor(ok_result([{"total": 5}]))
+    monkeypatch.setattr(execute_mod, "execute_sql", ex)
+    fake_llm.plan(sql_plan("SELECT COUNT(*) AS total FROM clients"))  # hallucinated table
+    fake_llm.correct(GOOD_SQL)
+    graph = build_graph(None, schema_provider=StubSchemaProvider(tables=frozenset({"customers"})))
+    state = await run_query(graph, "How many customers?")
+    assert state["status"] == "answered"
+    assert state["final_sql"] == GOOD_SQL
+    assert fake_llm.count("correct") == 1
+    assert state["attempts"][0]["classification"] == "syntax"
+    assert "clients" in state["attempts"][0]["error"]
+    assert ex.sqls == [GOOD_SQL]  # the hallucinated query never reached the database
+
+
+async def test_system_schema_still_refused_with_table_allowlist(
+    fake_llm: FakeLLMScript, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ex = FakeExecutor()
+    monkeypatch.setattr(execute_mod, "execute_sql", ex)
+    fake_llm.plan(sql_plan("SELECT * FROM pg_catalog.pg_tables"))
+    graph = build_graph(None, schema_provider=StubSchemaProvider(tables=frozenset({"customers"})))
+    state = await run_query(graph, "list tables")
+    assert state["status"] == "refused"
+    assert fake_llm.count("correct") == 0
+    assert ex.sqls == []
+
+
 async def test_exec_error_then_correction_then_success(
     run: Runner, fake_llm: FakeLLMScript
 ) -> None:

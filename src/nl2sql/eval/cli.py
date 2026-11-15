@@ -125,6 +125,11 @@ def check_gold(
         None, help="output JSON (default results/bird_minidev_gold_check_<date>.json)"
     ),
     concurrency: int = typer.Option(4),
+    allowlist: bool = typer.Option(
+        False,
+        "--allowlist/--no-allowlist",
+        help="validate with each database's table set, as the graph does (stored profiles)",
+    ),
 ) -> None:
     """Run every gold SQL through the per-db roles and through validate_sql (false-block count)."""
     from nl2sql.safety.validator import validate_sql
@@ -135,12 +140,17 @@ def check_gold(
     dbs = sorted({q.db_id for q in questions})
 
     async def go() -> dict[str, Any]:
-        registry = DatabaseRegistry.for_bird(dbs, use_stored_profiles=False)
+        registry = DatabaseRegistry.for_bird(dbs, use_stored_profiles=allowlist)
         runner = RegistrySqlRunner(registry)
         sem = asyncio.Semaphore(concurrency)
+        table_sets: dict[str, set[str] | None] = {}
+        if allowlist:
+            for db in dbs:
+                names = await (await registry.get(db)).schema_provider.table_names()
+                table_sets[db] = set(names) if names else None
 
         async def one(q: Question) -> dict[str, Any]:
-            v = validate_sql(q.gold_sql)
+            v = validate_sql(q.gold_sql, allowed_tables=table_sets.get(q.db_id))
             async with sem:
                 o = await runner.run(q.db_id, q.gold_sql, 30.0)
             rec: dict[str, Any] = {
@@ -166,6 +176,7 @@ def check_gold(
     recs = res["records"]
     summary = {
         "n": len(recs),
+        "table_allowlist": allowlist,
         "validator_falsely_blocked": sum(1 for r in recs if not r["validator_valid"]),
         "validator_blocked_terminal": sum(1 for r in recs if r["validator_blocked"]),
         "gold_exec_errors": sum(1 for r in recs if r["exec_error"]),

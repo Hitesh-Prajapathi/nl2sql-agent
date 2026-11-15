@@ -74,3 +74,6 @@ class StoredProfileSchemaProvider(SchemaProvider):
 
     async def get_context(self, question: str = "", evidence: str = "") -> str:
         return self._context
+
+    async def table_names(self) -> frozenset[str] | None:
+        return frozenset(t["name"] for t in self._data["tables"])

@@ -269,7 +269,8 @@ async def test_one_daily_429_then_success_continues_the_run(tmp_path: Path) -> N
     recs = await run_questions(QS, v, MemSql(), TABLE_COLUMNS, cfg, sleep=_noop_sleep)
     assert len(recs) == len(QS) and state.stopped_reason is None
     assert v.calls[:2] == [1, 1]  # the SAME question was retried
-    assert any(s >= 300 for s in slept)  # waited on the mocked clock, never for real
+    assert sum(slept) >= 300  # waited on the mocked clock, never for real
+    assert max(slept) <= 30  # in slices toward a wall-clock deadline
     assert pacer.daily_strikes("m") == 0
 
 

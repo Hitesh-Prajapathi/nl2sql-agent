@@ -47,7 +47,7 @@ Each node, the state it reads and writes, and the routing rules are described in
 A generated query passes through these layers. Each is independent, so a bypass of one is not a bypass of the system.
 
 1. **Natural-language injection guard.** Pattern-based, runs before any LLM call.
-2. **AST validator** (`src/nl2sql/safety/`). A sqlglot parse in the Postgres dialect. Only a single `SELECT` is accepted, with an allowlist of functions and typed nodes, system schemas blocked, and a lexical pre-scan that follows PostgreSQL's own lexing rules to defeat parser-differential tricks.
+2. **AST validator** (`src/nl2sql/safety/`). A sqlglot parse in the Postgres dialect. Only a single `SELECT` is accepted, with an allowlist of functions and typed nodes, system schemas blocked, a table allowlist built from the loaded schema (an unknown table goes back to the model for correction instead of being refused), and a lexical pre-scan that follows PostgreSQL's own lexing rules to defeat parser-differential tricks.
 3. **Read-only database role and session.** A `SELECT`-only role, read-only transactions, and statement and lock timeouts ([db/setup_role.sql](db/setup_role.sql)).
 4. **Database hardening** ([db/hardening.sql](db/hardening.sql)). `REVOKE EXECUTE` on dangerous built-in functions, locked-down catalog views, and a pinned `search_path`.
 5. **Separate audit role.** Every request is logged to `audit.query_log` by a dedicated writer role; the agent's role cannot read it ([db/audit.sql](db/audit.sql)).
@@ -56,15 +56,15 @@ A generated query passes through these layers. Each is independent, so a bypass 
 
 436 attack payloads in 18 categories, plus 75 benign queries. Each run also executes every payload directly against the database role to count which layers would stop it.
 
-| Metric | v1 (denylist) | v2 (allowlist) | v3 (allowlist + DB hardening) |
-|---|---|---|---|
-| Validator block rate | 62.2% (271/436) | 100% (436/436) | 100% (436/436) |
-| False blocks on 75 benign queries | 0% | 0% | 0% |
-| Payloads that would succeed at the database if the validator were bypassed | not tabulated | 170 | 54 |
-| Payloads caught by only one defence layer | not tabulated | 218 | 94 |
-| Database write canary (checksums of all 8 tables) | not tabulated | not tabulated | unchanged |
+| Metric | v1 (denylist) | v2 (allowlist) | v3 (allowlist + DB hardening) | v4 (+ table allowlist) |
+|---|---|---|---|---|
+| Validator block rate | 62.2% (271/436) | 100% (436/436) | 100% (436/436) | 100% (436/436) |
+| False blocks on 75 benign queries | 0% | 0% | 0% | 0% |
+| Payloads that would succeed at the database if the validator were bypassed | not tabulated | 170 | 54 | 54 |
+| Payloads caught by only one defence layer | not tabulated | 218 | 94 | 94 |
+| Database write canary (checksums of all 8 tables) | not tabulated | not tabulated | unchanged | unchanged |
 
-Sources: [results/redteam_sql_v1.json](results/redteam_sql_v1.json), [v2](results/redteam_sql_v2.json), [v3](results/redteam_sql_v3.json). The suite lives in [redteam/](redteam/). It shows the rate on this payload set, not the absence of vulnerabilities.
+Sources: [results/redteam_sql_v1.json](results/redteam_sql_v1.json), [v2](results/redteam_sql_v2.json), [v3](results/redteam_sql_v3.json), [v4](results/redteam_sql_v4.json). The v4 run is the same payload set after the table allowlist was wired into the graph; the red-team suite calls the validator without a table list, so its numbers match v3, and the allowlist itself is covered by unit tests and the gold-SQL check below. The suite lives in [redteam/](redteam/). It shows the rate on this payload set, not the absence of vulnerabilities.
 
 The natural-language guard scores 100% detection and 0% false positives on its own 95-item set, but that set was visible while the patterns were written, so the score is overfit. The old regex guard scored 48% detection and 20% false positives on the dev split ([v3 results](results/redteam_sql_v3.json)). See [Limitations](#limitations).
 
@@ -75,6 +75,7 @@ The natural-language guard scores 100% detection and 0% false positives on its o
 | SQL red team | 100% block (436/436), 0 false blocks on 75 benign queries | [v2](results/redteam_sql_v2.json) |
 | DB hardening | Payloads succeeding at the DB if the validator were bypassed: 170 to 54 | [v2](results/redteam_sql_v2.json), [v3](results/redteam_sql_v3.json) |
 | BIRD Mini-Dev gold SQL through the validator | 0 of 500 falsely blocked, 0 execution errors | [result](results/bird_minidev_gold_check_2026-11-14.json) |
+| Same check with each database's table allowlist applied, as the graph does | 0 of 500 falsely blocked, 0 execution errors | [result](results/bird_minidev_gold_check_allowlist_2026-11-15.json) |
 | Load test, mock LLM, 1 worker, 100 users, `LLM_MAX_CONCURRENCY` 8 to 64 | 6.1 RPS / P95 14.4 s to 55.8 RPS / P95 2.6 s, 0% errors | [baseline](results/loadtest_mock_2026-11-14_baseline.md), [tuned](results/loadtest_mock_2026-11-14_llmconc64.md) |
 | Load test, mock LLM, 100 users, 1 vs 4 workers (PostgreSQL sessions) | 27.7 to 58.9 RPS, P95 4.2 s to 2.6 s, 0% errors; follow-up conversations correct across workers (40/40) | [workers](results/loadtest_mock_2026-11-15_workers.md) |
 
@@ -239,7 +240,6 @@ tests/         unit, integration and end-to-end tests
 - **The NL injection guard is overfit.** Its 100% / 0% score comes from a set that was visible during development. An informal check on 30 fresh items found 13 of 15 attacks detected and 0 of 15 false positives; it was not saved as a results file. Treat the guard as a cheap first filter, not a defence on its own.
 - **NL red-team and clarification suites are built but not yet run** against the real model. Both are unit-tested offline, with objective oracles and no LLM judge.
 - **No hosted demo**, no production deployment and no real users.
-- The schema profiler queries every table in the profiled schema, so one unreadable table breaks the agent.
 
 ## Roadmap
 

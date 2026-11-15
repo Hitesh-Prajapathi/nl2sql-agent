@@ -243,6 +243,7 @@ def _function_error(node: exp.Func) -> str | None:
 
 
 def _check_table(table: exp.Table, allowed: set[str] | None, cte_names: set[str]) -> str | None:
+    """Terminal table/schema problem (system schema, cross-database, non-public schema)."""
     db = (table.db or "").lower()
     catalog = (table.catalog or "").lower()
     name = (table.name or "").lower()
@@ -260,12 +261,24 @@ def _check_table(table: exp.Table, allowed: set[str] | None, cte_names: set[str]
         return f"Cross-database references are blocked: {shown}"
     if db and db not in ALLOWED_SCHEMAS:
         return f"Access to schema '{db}' is blocked; only the public schema may be queried."
-    if allowed is not None and name and not isinstance(table.this, exp.Func):
-        if not db and name in cte_names:
-            return None
-        if name not in allowed:
-            return f"Table '{name}' is not in the permitted table list."
     return None
+
+
+def _unknown_table(table: exp.Table, allowed: set[str] | None, cte_names: set[str]) -> str | None:
+    """Correctable problem: a (public-schema or unqualified) table that is not in the schema.
+
+    Only meaningful for tables that already passed ``_check_table``. A hallucinated table name is
+    an ordinary model mistake, not an attack, so the caller returns a retryable error for it.
+    """
+    if allowed is None or isinstance(table.this, exp.Func):
+        return None
+    db = (table.db or "").lower()
+    name = (table.name or "").lower()
+    if not name or (not db and name in cte_names) or name in allowed:
+        return None
+    return (
+        f"Table '{name}' does not exist in this database. Use only the tables listed in the schema."
+    )
 
 
 def validate_sql(sql: str, allowed_tables: set[str] | None = None) -> SQLValidationResult:
@@ -283,7 +296,8 @@ def validate_sql(sql: str, allowed_tables: set[str] | None = None) -> SQLValidat
       5. Function ALLOWLIST: every function call must be on the allowed list; schema-qualified
          calls, session-keyword functions (``user``) and casts to ``reg*``/``oid`` types are blocked
       6. No access to system schemas (pg_catalog, information_schema, etc.) or non-public schemas
-      7. Optional ``allowed_tables``: only those tables (plus the query's own CTEs) may be read
+      7. Optional ``allowed_tables``: only those tables (plus the query's own CTEs) may be read;
+         an unknown table is a retryable error (is_blocked=False), not a terminal block
 
     Returns SQLValidationResult:
       - is_valid=True  -> proceed to execution
@@ -396,10 +410,17 @@ def validate_sql(sql: str, allowed_tables: set[str] | None = None) -> SQLValidat
     # -- Rules 6/7: schemas and tables ----------------------------------------------------
     allowed = {t.lower() for t in allowed_tables} if allowed_tables is not None else None
     cte_names = {cte.alias_or_name.lower() for cte in stmt.find_all(exp.CTE)}
-    for table in stmt.find_all(exp.Table):
+    tables = list(stmt.find_all(exp.Table))
+    for table in tables:
         error = _check_table(table, allowed, cte_names)
         if error:
             return _blocked(error)
+    # Only after every terminal check passed: an unknown table is retryable (correct_sql), so a
+    # query that also touches a system schema is never downgraded to a correctable error.
+    for table in tables:
+        unknown = _unknown_table(table, allowed, cte_names)
+        if unknown:
+            return SQLValidationResult(is_valid=False, error=unknown)
 
     return SQLValidationResult(is_valid=True)
 

@@ -57,6 +57,32 @@ DAILY_PHRASES = ("tokens per day", "(tpd)", "requests per day", "(rpd)", "per da
 _SECRET = re.compile(r"(gsk_|sk-)[A-Za-z0-9_\-]{8,}")
 
 
+# Longest single sleep. Waits are sliced so that, after the machine sleeps (the monotonic clock
+# pauses on macOS), the wait ends at the right WALL-clock time instead of resuming its remainder.
+WALL_SLEEP_CHUNK_S = 30.0
+
+
+async def wall_sleep(
+    seconds: float,
+    *,
+    sleep: Callable[[float], Any] = asyncio.sleep,
+    wall: Callable[[], float] = time.time,
+    chunk_s: float = WALL_SLEEP_CHUNK_S,
+) -> None:
+    """Wait ``seconds``, measured on the wall clock, in slices of at most ``chunk_s``.
+
+    A wait that fits in one slice is a plain ``sleep(seconds)``. Longer waits sleep toward a
+    ``wall() + seconds`` deadline, re-reading the wall clock after every slice, so a laptop
+    suspend in the middle ends the wait on time after wake.
+    """
+    if seconds <= chunk_s:
+        await sleep(max(0.0, seconds))
+        return
+    deadline = wall() + seconds
+    while (remaining := deadline - wall()) > 0:
+        await sleep(min(chunk_s, remaining))
+
+
 class DailyBudgetExhausted(Exception):
     """The model's daily request budget is used up (or Groq said so). Stop and resume later."""
 
@@ -139,7 +165,7 @@ def parse_rate_limit(exc: BaseException) -> RateLimitInfo:
 class _ModelState:
     tokens: float
     updated: float
-    cooldown_until: float = 0.0
+    cooldown_until: float = 0.0  # wall-clock deadline (time.time() scale)
     daily_strikes: int = 0
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
@@ -153,6 +179,7 @@ class Pacer:
         state_path: str | Path | None = None,
         rpd_margin: int = 5,
         clock: Callable[[], float] = time.monotonic,
+        wall: Callable[[], float] | None = None,
         utcnow: Callable[[], datetime] | None = None,
         sleep: Callable[[float], Any] = asyncio.sleep,
         daily_max_strikes: int = DAILY_MAX_STRIKES,
@@ -167,6 +194,9 @@ class Pacer:
         self.rpd_margin = rpd_margin
         self._path = Path(state_path) if state_path else None
         self._clock = clock
+        # Cooldowns are deadlines on the wall clock (monotonic time stops while a laptop sleeps).
+        # An injected ``clock`` without ``wall`` drives both, so fake clocks stay self-consistent.
+        self._wall = wall or (time.time if clock is time.monotonic else clock)
         self._utcnow = utcnow or (lambda: datetime.now(UTC))
         self._sleep = sleep
         self._rate = tpm / 60.0
@@ -325,16 +355,15 @@ class Pacer:
                 day = self._day(model)
                 if day["exhausted"] or day["requests"] >= self.rpd - self.rpd_margin:
                     raise DailyBudgetExhausted(model, int(day["requests"]), self.rpd)
-                now = self._clock()
-                self._refill(st, now)
-                wait = max(0.0, st.cooldown_until - now)
+                self._refill(st, self._clock())
+                wait = max(0.0, st.cooldown_until - self._wall())
                 if wait == 0.0:
                     if st.tokens >= tokens:
                         st.tokens -= tokens
                         self._day(model, lambda e: e.__setitem__("requests", e["requests"] + 1))
                         return
                     wait = (tokens - st.tokens) / self._rate
-                await self._sleep(wait + 0.05)
+                await wall_sleep(wait + 0.05, sleep=self._sleep, wall=self._wall)
 
     def settle(self, model: str, reserved: int, actual: int | None) -> None:
         """Return the unused part of a reservation once the real token usage is known."""
@@ -352,9 +381,9 @@ class Pacer:
         st = self._state(model)
         now = self._utcnow()
         iso = now.isoformat()
-        now_mono = self._clock()
+        now_wall = self._wall()
         # A 429 for a request sent before the current cooldown began is the same event.
-        counted = now_mono >= st.cooldown_until
+        counted = now_wall >= st.cooldown_until
         out: dict[str, Any] = {}
 
         def mark(e: dict[str, Any]) -> None:
@@ -400,11 +429,11 @@ class Pacer:
                         if info.retry_after_s is not None
                         else sched[min(out["strikes"], len(sched)) - 1]
                     )
-                    st.cooldown_until = max(st.cooldown_until, now_mono + wait + 0.5)
+                    st.cooldown_until = max(st.cooldown_until, now_wall + wait + 0.5)
         else:
             wait = info.retry_after_s if info.retry_after_s is not None else DEFAULT_COOLDOWN_S
             wait = min(wait, MAX_COOLDOWN_S)
-            st.cooldown_until = max(st.cooldown_until, now_mono + wait + 0.5)
+            st.cooldown_until = max(st.cooldown_until, now_wall + wait + 0.5)
             st.tokens = min(st.tokens, info.remaining_tokens or 0.0)
         return info
 

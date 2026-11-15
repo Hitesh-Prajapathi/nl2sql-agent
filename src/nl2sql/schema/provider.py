@@ -7,7 +7,12 @@ import asyncpg
 import structlog
 
 from nl2sql.config import get_settings
-from nl2sql.schema.introspect import get_catalog_hash, introspect_schema, resolve_schema
+from nl2sql.schema.introspect import (
+    build_profile_data,
+    get_catalog_hash,
+    render_context,
+    resolve_schema,
+)
 from nl2sql.schema.profile import DatabaseProfile
 
 log = structlog.get_logger()
@@ -18,6 +23,10 @@ class SchemaProvider(ABC):
 
     @abstractmethod
     async def get_context(self, question: str = "", evidence: str = "") -> str: ...
+
+    async def table_names(self) -> frozenset[str] | None:
+        """Every table the schema context can refer to (None = unknown, no table allowlist)."""
+        return None
 
 
 class FullSchemaProvider(SchemaProvider):
@@ -31,6 +40,7 @@ class FullSchemaProvider(SchemaProvider):
         self._pool = pool
         self._profile = profile
         self._cache: str | None = None
+        self._tables: frozenset[str] | None = None
         self._cache_hash: str | None = None
         self._built_at: float = 0.0
 
@@ -55,9 +65,9 @@ class FullSchemaProvider(SchemaProvider):
                     else schema
                 )
             self._profile = DatabaseProfile.from_db_name(db_name)
-        context = await introspect_schema(
-            self._pool, self._profile, settings.profile_table_token_budget
-        )
+        data = await build_profile_data(self._pool, self._profile)
+        context = render_context(data, settings.profile_table_token_budget, self._profile)
+        self._tables = frozenset(t["name"] for t in data["tables"])
         elapsed = (time.perf_counter() - t0) * 1000
         log.info("schema_introspected", duration_ms=round(elapsed))
 
@@ -66,6 +76,11 @@ class FullSchemaProvider(SchemaProvider):
         self._built_at = time.time()
         return context
 
+    async def table_names(self) -> frozenset[str] | None:
+        if self._cache is None:
+            await self.get_context()
+        return self._tables
+
     @property
     def profile(self) -> DatabaseProfile | None:
         """Available after the first get_context call (or if passed in)."""
@@ -73,5 +88,6 @@ class FullSchemaProvider(SchemaProvider):
 
     def invalidate(self) -> None:
         self._cache = None
+        self._tables = None
         self._cache_hash = None
         self._built_at = 0.0

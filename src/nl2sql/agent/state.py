@@ -30,6 +30,7 @@ class AgentState(TypedDict):
     # Optional (readers must use .get()): database profile info
     db_id: str
     db_display_name: str
+    schema_tables: list[str]  # every table of the loaded schema (validator table allowlist)
     data_date_ranges: dict[str, tuple[str, str]]  # "table.column" -> (min, max)
 
     # ── Planning ──────────────────────────────────────────────────────────────

@@ -390,3 +390,77 @@ def test_a_fallback_identical_to_the_primary_is_not_configured(
 def test_retry_after_header_is_read_from_http_errors() -> None:
     err = LLMHTTPError(429, "x")
     assert parse_rate_limit(err).retry_after_s is None  # no response object: defaults apply
+
+
+# ── wall-clock sleeps (laptop suspend) ───────────────────────────────────────────────
+
+
+class SuspendingWall:
+    """Wall clock plus a sleep that 'suspends' once: wall time jumps while no sleep time passes."""
+
+    def __init__(self, jump_after_calls: int = 0, jump_s: float = 0.0) -> None:
+        self.t = 1_000_000.0
+        self.calls: list[float] = []
+        self.jump_after_calls = jump_after_calls
+        self.jump_s = jump_s
+
+    def wall(self) -> float:
+        return self.t
+
+    async def sleep(self, s: float) -> None:
+        self.calls.append(s)
+        self.t += s
+        if len(self.calls) == self.jump_after_calls:
+            self.t += self.jump_s  # the machine slept for jump_s; the sleep call never knew
+
+
+async def test_wall_sleep_short_wait_is_one_plain_sleep() -> None:
+    w = SuspendingWall()
+    await pacer_mod.wall_sleep(12.5, sleep=w.sleep, wall=w.wall)
+    assert w.calls == [12.5]
+
+
+async def test_wall_sleep_slices_long_waits_into_30s_chunks() -> None:
+    w = SuspendingWall()
+    start = w.t
+    await pacer_mod.wall_sleep(100, sleep=w.sleep, wall=w.wall)
+    assert w.calls == [30.0, 30.0, 30.0, pytest.approx(10.0)]
+    assert w.t - start == pytest.approx(100)
+
+
+async def test_wall_sleep_ends_at_wall_deadline_after_suspend() -> None:
+    # A 23-minute wait; the machine sleeps for 20 minutes after the 2nd chunk. The wait must end
+    # at the original wall deadline (23 min after the start), not 20 minutes later.
+    w = SuspendingWall(jump_after_calls=2, jump_s=20 * 60)
+    start = w.t
+    await pacer_mod.wall_sleep(23 * 60, sleep=w.sleep, wall=w.wall)
+    assert w.t - start == pytest.approx(23 * 60, abs=1)
+    assert len(w.calls) == 2 + 4  # two chunks, the suspend, then the last 2 min in 30 s chunks
+    assert max(w.calls) <= 30.0
+
+
+async def test_pacer_cooldown_is_a_wall_clock_deadline() -> None:
+    w = SuspendingWall()
+    mono = [0.0]  # monotonic clock that does not advance while the "machine" sleeps
+
+    def clock() -> float:
+        return mono[0]
+
+    async def sleep(s: float) -> None:
+        await w.sleep(s)
+        mono[0] += s
+        if len(w.calls) == 3:
+            w.t += 500.0  # 500 s of suspend: wall advances, monotonic does not
+
+    p = Pacer(
+        clock=clock,
+        wall=w.wall,
+        utcnow=lambda: datetime(2026, 11, 14, tzinfo=UTC),
+        sleep=sleep,
+        rpd_margin=0,
+    )
+    start = w.t
+    p.note_rate_limited("m", RateLimited("rate limit", {"retry-after": "800"}))
+    await p.acquire("m", 100)
+    assert 800 <= w.t - start < 840  # ends at the deadline, not ~500 s later
+    assert max(w.calls) <= 30.0
