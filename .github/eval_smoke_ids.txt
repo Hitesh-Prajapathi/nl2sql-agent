@@ -1,2 +1,29 @@
-# PLACEHOLDER: replace with 25 stratified BIRD Mini-Dev question ids, one per line.
-# Generate once with the eval harness (stratified by difficulty), then commit it so the subset stays fixed.
+# 25 BIRD Mini-Dev question ids for the eval-smoke PR gate, one per line.
+# Drawn from config/bird_subset_150.txt, stratified by difficulty (simple 7, moderate 13,
+# challenging 5; proportional to the subset's 44/75/31 split) with random.Random(20261114)
+# over the sorted ids per level. Fixed: do not regenerate, or the baseline stops being comparable.
+138
+249
+356
+391
+483
+532
+685
+733
+750
+782
+954
+994
+1042
+1103
+1146
+1205
+1220
+1235
+1252
+1344
+1371
+1376
+1392
+1482
+1506

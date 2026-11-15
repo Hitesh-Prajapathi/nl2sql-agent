@@ -24,7 +24,7 @@ from typing import Any
 import psutil
 
 ROOT = Path(__file__).resolve().parent.parent
-PORT = 8765
+PORT = int(os.environ.get("LT_PORT", "8765"))
 BASE = f"http://127.0.0.1:{PORT}"
 
 
@@ -69,6 +69,55 @@ def start_server(env: dict[str, str], workers: int) -> subprocess.Popen[bytes]:
             continue
     proc.kill()
     raise RuntimeError("server not ready in 30s")
+
+
+def verify_followups(n: int = 40) -> dict[str, Any]:
+    """Two-turn conversations over fresh connections (so they spread across workers); then
+    check the shared Postgres store holds both turns for each thread."""
+    import asyncio
+    import uuid
+
+    import asyncpg
+
+    first, second = "How many customers are there?", "And how many of them are active?"
+    tids = [str(uuid.uuid4()) for _ in range(n)]
+    ok = 0
+    for tid in tids:
+        sts = []
+        for q in (first, second):
+            req = urllib.request.Request(
+                BASE + "/v1/query",
+                data=json.dumps({"question": q, "thread_id": tid}).encode(),
+                headers={"Content-Type": "application/json", "Connection": "close"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=60) as r:
+                sts.append(json.loads(r.read()).get("status"))
+        ok += all(s in ("answered", "success", "needs_clarification", "clarification") for s in sts)
+
+    async def counts() -> list[int]:
+        url = os.environ.get(
+            "SESSION_DATABASE_URL",
+            "postgresql://app_state_writer:app_state_pass@localhost:5432/nl2sql_assignment",
+        )
+        conn = await asyncpg.connect(url)
+        try:
+            rows = await conn.fetch(
+                "SELECT jsonb_array_length(turns) AS n FROM app_state.sessions "
+                "WHERE session_id = ANY($1::text[])",
+                tids,
+            )
+            return [r["n"] for r in rows]
+        finally:
+            await conn.close()
+
+    lens = asyncio.run(counts())
+    return {
+        "threads": n,
+        "http_ok_pairs": ok,
+        "threads_in_store": len(lens),
+        "threads_with_two_turns": sum(1 for x in lens if x == 2),
+    }
 
 
 def stop(proc: subprocess.Popen[bytes]) -> None:
@@ -222,6 +271,9 @@ def main() -> None:
     ap.add_argument("--tag", default="")
     ap.add_argument("--pool-max", type=int, default=0, help="override asyncpg pool max_size")
     ap.add_argument("--llm-concurrency", type=int, default=0, help="override LLM_MAX_CONCURRENCY")
+    ap.add_argument("--session-backend", default="", help="SESSION_BACKEND (memory|postgres)")
+    ap.add_argument("--prom-dir", default="", help="PROMETHEUS_MULTIPROC_DIR")
+    ap.add_argument("--verify-followups", action="store_true")
     ap.add_argument("--baseline", default="", help="baseline results JSON to compare against")
     ap.add_argument("--notes", default="")
     args = ap.parse_args()
@@ -240,6 +292,11 @@ def main() -> None:
         env["LLM_MAX_CONCURRENCY"] = str(args.llm_concurrency)
 
     from loadtest.fake_script import LatencyParams
+
+    if args.session_backend:
+        env["SESSION_BACKEND"] = args.session_backend
+    if args.prom_dir:
+        env["PROMETHEUS_MULTIPROC_DIR"] = args.prom_dir
 
     lat = LatencyParams.from_env()
     srv = start_server(env, args.workers)
@@ -268,6 +325,7 @@ def main() -> None:
                 flush=True,
             )
             results.append(r)
+        followup_check = verify_followups() if args.verify_followups else None
     finally:
         stop(srv)
 
@@ -280,12 +338,14 @@ def main() -> None:
         "tag": args.tag,
         "notes": args.notes,
         "workers": args.workers,
+        "session_backend": args.session_backend or "memory",
+        "followup_check": followup_check,
         "ramp_s": args.ramp,
         "steady_s": args.steady,
         "settings": {
             "pool_min_size": 2,
             "pool_max_size": args.pool_max or 10,
-            "llm_max_concurrency": args.llm_concurrency or 8,
+            "llm_max_concurrency": args.llm_concurrency or 32,
             "rate_limit_enabled": False,
             "audit_enabled": False,
             "traffic_mix": "70% simple / 20% complex joins / 10% 2-turn follow-ups (same thread_id)",
