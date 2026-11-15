@@ -1,0 +1,454 @@
+# Clarification eval set for the demo e-commerce schema (db/schema.sql + db/seed_data.sql).
+# label: ambiguous -> the agent SHOULD ask for clarification; clear -> it should answer.
+# Dataset notes: two customers share the name Rahul Menon; Priya Verma is both a customer
+# and an agent; data spans 2026-01 .. 2026-06 (orders, payments, tickets).
+- id: amb-001
+  question: Who are our best customers?
+  label: ambiguous
+  ambiguity_type: undefined_metric
+  note: '''Best'' is not defined: spend, order count, tier or recency.'
+- id: amb-002
+  question: Which products perform best?
+  label: ambiguous
+  ambiguity_type: undefined_metric
+  note: '''Perform'' is undefined: units sold, revenue or order count.'
+- id: amb-003
+  question: Show me our most valuable customers.
+  label: ambiguous
+  ambiguity_type: undefined_metric
+  note: '''Valuable'' could mean lifetime spend, margin, frequency or tier.'
+- id: amb-004
+  question: What is our revenue?
+  label: ambiguous
+  ambiguity_type: undefined_metric
+  note: orders.total_amount, payments.amount (completed) and net-of-refunds all differ; schema comments say they may not match.
+- id: amb-005
+  question: How profitable is the Electronics category?
+  label: ambiguous
+  ambiguity_type: undefined_metric
+  note: No cost or margin data exists; 'profitable' has no definition in this schema.
+- id: amb-006
+  question: Which agents are the most efficient?
+  label: ambiguous
+  ambiguity_type: undefined_metric
+  note: 'Efficiency is undefined: tickets closed, speed (no resolution dates) or escalation rate.'
+- id: amb-007
+  question: Which city is doing best?
+  label: ambiguous
+  ambiguity_type: undefined_metric
+  note: '''Doing best'' is undefined, and city is ambiguous between customers.city and orders.shipping_city.'
+- id: amb-008
+  question: How healthy is our support operation?
+  label: ambiguous
+  ambiguity_type: undefined_metric
+  note: 'No definition of health: backlog, escalation rate, closure rate.'
+- id: amb-009
+  question: Which payment method is the most successful?
+  label: ambiguous
+  ambiguity_type: undefined_metric
+  note: Success could be completion rate or volume; undefined.
+- id: amb-010
+  question: Which product category is growing fastest?
+  label: ambiguous
+  ambiguity_type: undefined_metric
+  note: Growth metric (orders, units, value) and comparison period are both undefined.
+- id: amb-011
+  question: Show me the top 5 customers.
+  label: ambiguous
+  ambiguity_type: ranking_criterion
+  note: 'Top by what: spend, orders, tickets?'
+- id: amb-012
+  question: List the top 10 products.
+  label: ambiguous
+  ambiguity_type: ranking_criterion
+  note: 'Top by what: units sold, revenue, price?'
+- id: amb-013
+  question: Who are the top agents?
+  label: ambiguous
+  ambiguity_type: ranking_criterion
+  note: Top by tickets handled, closed, or something else; also how many.
+- id: amb-014
+  question: Show the biggest orders.
+  label: ambiguous
+  ambiguity_type: ranking_criterion
+  note: Biggest by total_amount or by item count; and how many to show.
+- id: amb-015
+  question: Which are the top cities?
+  label: ambiguous
+  ambiguity_type: ranking_criterion
+  note: Top by customers, orders or spend; city could be customers.city or shipping_city.
+- id: amb-016
+  question: What did Rahul Menon order?
+  label: ambiguous
+  ambiguity_type: ambiguous_entity
+  note: Two different customers are named Rahul Menon.
+- id: amb-017
+  question: Show the tickets for Rahul Menon.
+  label: ambiguous
+  ambiguity_type: ambiguous_entity
+  note: Two different customers are named Rahul Menon.
+- id: amb-018
+  question: How much has Rahul Menon paid in total?
+  label: ambiguous
+  ambiguity_type: ambiguous_entity
+  note: Two different customers are named Rahul Menon.
+- id: amb-019
+  question: Show me everything about Priya Verma.
+  label: ambiguous
+  ambiguity_type: ambiguous_entity
+  note: Priya Verma is both a customer and a support agent.
+- id: amb-020
+  question: Tell me about Priya Verma's activity.
+  label: ambiguous
+  ambiguity_type: ambiguous_entity
+  note: Priya Verma is both a customer and a support agent.
+- id: amb-021
+  question: What is the status of that order?
+  label: ambiguous
+  ambiguity_type: ambiguous_entity
+  note: No order is identified.
+- id: amb-022
+  question: Show me the customer's last ticket.
+  label: ambiguous
+  ambiguity_type: ambiguous_entity
+  note: No customer is identified.
+- id: amb-023
+  question: Has this customer been refunded?
+  label: ambiguous
+  ambiguity_type: ambiguous_entity
+  note: No customer is identified.
+- id: amb-024
+  question: Is the order delivered?
+  label: ambiguous
+  ambiguity_type: ambiguous_entity
+  note: No order is identified.
+- id: amb-025
+  question: How many orders did he place?
+  label: ambiguous
+  ambiguity_type: ambiguous_entity
+  note: No person is identified.
+- id: amb-026
+  question: How many orders did we get recently?
+  label: ambiguous
+  ambiguity_type: time_range
+  note: '''Recently'' has no defined window.'
+- id: amb-027
+  question: How have sales been lately?
+  label: ambiguous
+  ambiguity_type: time_range
+  note: '''Lately'' has no window and ''sales'' has no definition.'
+- id: amb-028
+  question: How many tickets were opened in the last while?
+  label: ambiguous
+  ambiguity_type: time_range
+  note: No defined window.
+- id: amb-029
+  question: Show me order trends.
+  label: ambiguous
+  ambiguity_type: time_range
+  note: Time range and granularity (day, week, month) are unspecified.
+- id: amb-030
+  question: How many customers signed up around the holidays?
+  label: ambiguous
+  ambiguity_type: time_range
+  note: Which holidays and which window are unspecified.
+- id: amb-031
+  question: What happened to payments in the early days?
+  label: ambiguous
+  ambiguity_type: time_range
+  note: '''Early days'' is undefined.'
+- id: amb-032
+  question: How many orders came in during peak season?
+  label: ambiguous
+  ambiguity_type: time_range
+  note: '''Peak season'' is not defined by the data.'
+- id: amb-033
+  question: Show last month's revenue.
+  label: ambiguous
+  ambiguity_type: time_range
+  note: Reference month is unspecified, and revenue is undefined.
+- id: amb-034
+  question: Which customers are high spenders?
+  label: ambiguous
+  ambiguity_type: threshold
+  note: No spend threshold or percentile given.
+- id: amb-035
+  question: Show me large orders.
+  label: ambiguous
+  ambiguity_type: threshold
+  note: '''Large'' has no threshold.'
+- id: amb-036
+  question: Which products are expensive?
+  label: ambiguous
+  ambiguity_type: threshold
+  note: '''Expensive'' has no threshold.'
+- id: amb-037
+  question: List customers who order frequently.
+  label: ambiguous
+  ambiguity_type: threshold
+  note: '''Frequently'' has no threshold.'
+- id: amb-038
+  question: Which tickets have been open too long?
+  label: ambiguous
+  ambiguity_type: threshold
+  note: '''Too long'' has no threshold, and no close date exists.'
+- id: amb-039
+  question: Which refunds are unusually large?
+  label: ambiguous
+  ambiguity_type: threshold
+  note: '''Unusually'' has no threshold.'
+- id: amb-040
+  question: Find customers with many orders.
+  label: ambiguous
+  ambiguity_type: threshold
+  note: '''Many'' has no threshold.'
+- id: amb-041
+  question: Which agents have a heavy ticket load?
+  label: ambiguous
+  ambiguity_type: threshold
+  note: '''Heavy'' has no threshold.'
+- id: amb-042
+  question: What is the total amount?
+  label: ambiguous
+  ambiguity_type: column_ambiguity
+  note: orders.total_amount, payments.amount or refunds.amount; also unscoped.
+- id: amb-043
+  question: What is the average price?
+  label: ambiguous
+  ambiguity_type: column_ambiguity
+  note: products.unit_price vs order_items.unit_price (price at purchase).
+- id: amb-044
+  question: Show me the status breakdown.
+  label: ambiguous
+  ambiguity_type: column_ambiguity
+  note: orders, payments and support_tickets all have status columns.
+- id: amb-045
+  question: How many by city?
+  label: ambiguous
+  ambiguity_type: column_ambiguity
+  note: customers.city vs orders.shipping_city, and what is being counted.
+- id: amb-046
+  question: Which status is the most common?
+  label: ambiguous
+  ambiguity_type: column_ambiguity
+  note: Status exists in three tables.
+- id: amb-047
+  question: What is the average amount per customer?
+  label: ambiguous
+  ambiguity_type: column_ambiguity
+  note: Order totals, payments or refunds; per-customer basis unclear.
+- id: amb-048
+  question: List the cities with the most activity.
+  label: ambiguous
+  ambiguity_type: column_ambiguity
+  note: Two city columns and 'activity' is undefined.
+- id: amb-049
+  question: Compare the price of products with what customers paid.
+  label: ambiguous
+  ambiguity_type: column_ambiguity
+  note: unit_price vs order_items.unit_price vs payments.amount, and the comparison basis is unclear.
+- id: amb-050
+  question: How much did we refund?
+  label: ambiguous
+  ambiguity_type: column_ambiguity
+  note: refunds.amount vs payments with status refunded; period unspecified.
+- id: clr-001
+  question: How many customers are in the Gold tier?
+  label: clear
+  difficulty: easy
+- id: clr-002
+  question: How many orders have status 'cancelled'?
+  label: clear
+  difficulty: easy
+- id: clr-003
+  question: What is the total of orders.total_amount for delivered orders?
+  label: clear
+  difficulty: easy
+- id: clr-004
+  question: List the names of all products in the Books category.
+  label: clear
+  difficulty: easy
+- id: clr-005
+  question: How many support tickets have status open?
+  label: clear
+  difficulty: easy
+- id: clr-006
+  question: What is the sum of payments.amount where the payment status is 'completed'?
+  label: clear
+  difficulty: easy
+- id: clr-007
+  question: How many agents are in the Billing team?
+  label: clear
+  difficulty: easy
+- id: clr-008
+  question: List the names of customers whose city is Pune.
+  label: clear
+  difficulty: easy
+- id: clr-009
+  question: How many refunds have the reason 'Damaged in transit'?
+  label: clear
+  difficulty: easy
+- id: clr-010
+  question: What is the average unit_price of products in the Electronics category?
+  label: clear
+  difficulty: easy
+- id: clr-011
+  question: How many orders were placed in March 2026?
+  label: clear
+  difficulty: easy
+- id: clr-012
+  question: List the SKU and name of products with a unit_price above 4000.
+  label: clear
+  difficulty: easy
+- id: clr-013
+  question: How many payments were made using the upi method?
+  label: clear
+  difficulty: easy
+- id: clr-014
+  question: Show the five most expensive products by unit_price.
+  label: clear
+  difficulty: easy
+- id: clr-015
+  question: How many customers have a signup_date in 2025?
+  label: clear
+  difficulty: easy
+- id: clr-016
+  question: How many support tickets are in the billing category?
+  label: clear
+  difficulty: easy
+- id: clr-017
+  question: What is the total amount in the refunds table?
+  label: clear
+  difficulty: easy
+- id: clr-018
+  question: How many orders have shipping_city equal to Delhi?
+  label: clear
+  difficulty: easy
+- id: clr-019
+  question: How many distinct customers have placed at least one order?
+  label: clear
+  difficulty: easy
+- id: clr-020
+  question: How many support tickets have status escalated?
+  label: clear
+  difficulty: easy
+- id: clr-021
+  question: What is the maximum amount in the payments table?
+  label: clear
+  difficulty: easy
+- id: clr-022
+  question: List all agents in the Technical team.
+  label: clear
+  difficulty: easy
+- id: clr-023
+  question: How many order_items rows have quantity greater than 2?
+  label: clear
+  difficulty: easy
+- id: clr-024
+  question: How many orders have status delivered?
+  label: clear
+  difficulty: easy
+- id: clr-025
+  question: Show the number of orders for each order status.
+  label: clear
+  difficulty: easy
+- id: clr-026
+  question: What is the average total_amount across all rows of the orders table?
+  label: clear
+  difficulty: easy
+- id: clr-027
+  question: How many customers are there in each tier?
+  label: clear
+  difficulty: easy
+- id: clr-028
+  question: List the customer_id and name of Silver tier customers whose city is Mumbai.
+  label: clear
+  difficulty: easy
+- id: clr-029
+  question: How many products are there in each category?
+  label: clear
+  difficulty: easy
+- id: clr-030
+  question: How many payments have status failed?
+  label: clear
+  difficulty: easy
+- id: clr-031
+  question: Show the top 5 customers by total completed payment amount, with their names.
+  label: clear
+  difficulty: near_miss
+- id: clr-032
+  question: Show the top 10 products by total quantity sold in order_items.
+  label: clear
+  difficulty: near_miss
+- id: clr-033
+  question: Which agent has the most tickets with status closed? Give the agent name.
+  label: clear
+  difficulty: near_miss
+- id: clr-034
+  question: Which customers.city has the most customers?
+  label: clear
+  difficulty: near_miss
+- id: clr-035
+  question: What is the total revenue, defined as the sum of payments.amount for completed payments?
+  label: clear
+  difficulty: near_miss
+- id: clr-036
+  question: Show orders with a total_amount above 10000.
+  label: clear
+  difficulty: near_miss
+- id: clr-037
+  question: Which customers have placed more than 3 orders?
+  label: clear
+  difficulty: near_miss
+- id: clr-038
+  question: List tickets with status open that were created before 2026-03-01.
+  label: clear
+  difficulty: near_miss
+- id: clr-039
+  question: How many orders have an order_date between 2026-01-01 and 2026-01-31?
+  label: clear
+  difficulty: near_miss
+- id: clr-040
+  question: What is the average unit_price in the order_items table?
+  label: clear
+  difficulty: near_miss
+- id: clr-041
+  question: How many tickets is the agent Rohan Iyer assigned to?
+  label: clear
+  difficulty: near_miss
+- id: clr-042
+  question: Show all orders placed by the customer with email rahul.menon9@example.com.
+  label: clear
+  difficulty: near_miss
+- id: clr-043
+  question: Which payment method has the highest number of completed payments?
+  label: clear
+  difficulty: near_miss
+- id: clr-044
+  question: What is the total quantity of the product with SKU SKU-0003 across all order items?
+  label: clear
+  difficulty: near_miss
+- id: clr-045
+  question: List products with a unit_price below 1000.
+  label: clear
+  difficulty: near_miss
+- id: clr-046
+  question: How many customers have never placed an order?
+  label: clear
+  difficulty: near_miss
+- id: clr-047
+  question: How many delivered orders are there for each shipping_city?
+  label: clear
+  difficulty: near_miss
+- id: clr-048
+  question: What is the total of orders.total_amount for each customer tier?
+  label: clear
+  difficulty: near_miss
+- id: clr-049
+  question: Which product category has the highest average unit_price in the products table?
+  label: clear
+  difficulty: near_miss
+- id: clr-050
+  question: How many refunds have a refund_date in February 2026?
+  label: clear
+  difficulty: near_miss
