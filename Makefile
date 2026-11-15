@@ -1,4 +1,4 @@
-.PHONY: bird-setup profile eval report prompt-size db-harden setup docker-up docker-down docker-logs dev cli ask test test-unit test-safety test-e2e bench redteam-sql lint fmt check logs
+.PHONY: redteam-nl redteam-nl-setup eval-clarify bird-setup profile eval report prompt-size db-harden setup docker-up docker-down docker-logs dev cli ask test test-unit test-safety test-e2e bench redteam-sql lint fmt check logs
 
 # ── Setup ─────────────────────────────────────────────────────────────────────
 setup:
@@ -53,6 +53,22 @@ bench:
 
 redteam-sql:
 	uv run python redteam/run_sql_suite.py
+
+# NL-level red team (objective oracles; see redteam/nl/README.md). Uses its own database
+# nl2sql_redteam. A real model needs RT_ARGS=--confirm-real-llm (the runner refuses otherwise).
+LABEL ?= dev
+RT_ARGS ?=
+redteam-nl-setup:
+	PYTHONPATH=$(PWD)/src uv run python redteam/nl/setup_db.py
+
+redteam-nl:
+	PYTHONPATH=$(PWD)/src uv run python redteam/nl/run_nl_suite.py --label $(LABEL) $(RT_ARGS)
+
+# Clarification eval: 50 ambiguous + 50 clear questions (see evalsets/clarification/README.md).
+# A real model needs CLAR_ARGS=--confirm-real-llm.
+CLAR_ARGS ?=
+eval-clarify:
+	PYTHONPATH=$(PWD)/src uv run python evalsets/clarification/run_clarification_eval.py --label $(LABEL) $(CLAR_ARGS)
 
 # Apply db/hardening.sql (REVOKE EXECUTE on dangerous built-ins, catalog lockdown) as superuser.
 db-harden:
