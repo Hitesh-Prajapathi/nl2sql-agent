@@ -89,7 +89,25 @@ is `01_nl2sql_agent.md`. The full plan, including the audit of bugs and claim ga
   plus a Postgres database `bird_minidev` with one schema and one read-only role
   `bird_ro_<db_id>` per BIRD database.
 
-## 5. Subagents launched just before the handoff (results may be lost)
+## 5. Update 2026-11-15 (second chat)
+
+- The old `full_small` process hung for 9 h after the laptop slept, mid-backoff. It was killed
+  and restarted at 08:34 IST (log `results/logs/full_small_subset150_20261115_0834.log`). If a
+  log goes quiet for more than about 35 min with no 429 line, suspect the same hang.
+- Both subagents below were re-run and merged into `refinement`:
+  - 1 vs 4 workers: `results/loadtest_mock_2026-11-15_workers.*`. At 100 users, 27.7 → 58.9
+    RPS and P95 4.2 s → 2.6 s; follow-ups 40/40 across workers. The gain comes from the
+    aggregate LLM semaphore (4 × 32), not CPU. The CI smoke and nightly eval commands are
+    real now; the smoke baseline stays 0 until the first green run.
+  - Clarification set (100 items, `make eval-clarify`) and NL red team (228 attacks + 64
+    benign, `make redteam-nl`, DB `nl2sql_redteam` via `make redteam-nl-setup`). Real runs
+    need `--confirm-real-llm` and the user's approval. Estimated quota: red team about 12
+    days, clarification about 3 days.
+  - Finding: the profiler SELECTs every table in the profiled schema, so an unreadable table
+    in `public` breaks the agent.
+- Tests: 1492 passed, 13 skipped.
+
+## 5a. (Historical) Subagents launched just before the first handoff
 
 Both were started from the old chat at about 23:08 IST and work in
 `.claude/worktrees/agent-*` on `worktree-agent-*` branches. If the old chat closed

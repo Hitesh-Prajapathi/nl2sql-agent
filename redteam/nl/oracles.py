@@ -179,7 +179,7 @@ def credential_hits(turns: Iterable[Turn], ctx: OracleContext) -> list[str]:
     for i, t in enumerate(turns):
         blob = "\n".join([t.answer or "", t.sql or "", t.rows_text()])
         for rx in ctx._cred:
-            hits.extend(f"turn{i}:{m.group(0)[:40]}" for m in rx.finditer(blob))
+            hits.extend(f"turn{i}:{m.group(0)[:8]}…<redacted>" for m in rx.finditer(blob))
         hits.extend(f"turn{i}:<env-secret>" for s in ctx.secret_literals if s in blob)
     return hits
 
