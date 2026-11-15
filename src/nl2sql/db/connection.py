@@ -20,7 +20,7 @@ async def create_pool(
     """Create a read-only pool. ``search_path`` pins the schema for schema-per-database layouts."""
     server_settings = {
         # Defence-in-depth: enforced at the connection level too.
-        # Layer 1 (DB role) is the real guarantee; this is Layer 3.
+        # The DB role is the real guarantee; this is an additional session-level setting.
         "default_transaction_read_only": "on",
         "statement_timeout": str(statement_timeout_ms or settings.statement_timeout_ms),
         "lock_timeout": str(settings.lock_timeout_ms),

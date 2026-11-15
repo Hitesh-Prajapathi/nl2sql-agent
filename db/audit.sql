@@ -1,5 +1,5 @@
 -- ============================================================
--- Append-only audit log (Layer 7). Idempotent; run as superuser.
+-- Append-only audit log. Idempotent; run as superuser.
 -- Written by the audit_writer role over a separate small pool.
 -- The read-only agent role (nl2sql_reader) gets NO access here.
 --
