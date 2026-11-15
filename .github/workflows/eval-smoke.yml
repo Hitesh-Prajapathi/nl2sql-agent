@@ -87,7 +87,7 @@ jobs:
           if correct < baseline - 2:
               sys.exit(f"Below baseline - 2 ({correct} < {baseline - 2})")
           PY
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always() && steps.gate.outputs.run == 'true'
         with:
           name: eval-smoke-results
