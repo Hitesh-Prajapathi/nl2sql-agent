@@ -3,12 +3,12 @@
   "generated_at": "2026-11-14T00:19:38+00:00",
   "git": {
     "sha": "473261fd65fb96ef07c3a4ffd0e9d14b8ee988df",
-    "branch": "worktree-agent-a911c354b03b56e08",
+    "branch": "refinement",
     "dirty": true
   },
   "sqlglot_version": "30.31.0",
   "validator": {
-    "path": "/Users/hiteshprajapathi/Desktop/nl2sql-agent/.claude/worktrees/agent-a911c354b03b56e08/src/nl2sql/safety/validator.py",
+    "path": "src/nl2sql/safety/validator.py",
     "sha256": "98a1b0fccbe0afbc818f8a606ad95d4a83a63902d4fe7914b881de1ca1741b88",
     "in_this_worktree": true,
     "ref": "worktree validator.py (allowlist + PG-faithful lexical scan)"

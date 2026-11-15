@@ -7,7 +7,7 @@ computes P50/P95 per question and overall, and saves results to
 benchmarks/results/latency_<timestamp>.json + a human-readable summary.
 
 Usage (with Docker running):
-    cd /Users/hiteshprajapathi/Desktop/nl2sql-agent
+    cd nl2sql-agent
     python benchmarks/run_latency.py
 
 Or against local uvicorn:

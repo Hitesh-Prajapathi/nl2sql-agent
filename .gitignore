@@ -18,3 +18,6 @@ data/bird_minidev/*
 !data/bird_minidev/MANIFEST.json
 .eval_cache/
 results/*.jsonl
+
+# Local working notes (not part of the published repo)
+notes/
