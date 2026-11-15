@@ -7,7 +7,7 @@ permissions:
   contents: read
   packages: write
 env:
-  IMAGE: ghcr.io/${{ github.repository }}
+  IMAGE: ghcr.io/hitesh-prajapathi/nl2sql-agent  # registry names must be lowercase
 jobs:
   build:
     runs-on: ubuntu-latest
